@@ -1,0 +1,26 @@
+plugins {
+    id 'io.nextflow.nextflow-plugin' version '1.0.0-beta.11'
+}
+
+version = '1.0.0-beta.11'
+
+dependencies {
+    implementation 'org.xerial:sqlite-jdbc:3.47.1.0'
+    implementation 'org.json:json:20240303'
+}
+
+nextflowPlugin {
+    nextflowVersion = '25.10.0'
+
+    provider = 'ebi'
+    className = 'ebi.plugin.MetalogPlugin'
+    extensionPoints = [
+        'ebi.plugin.MetalogFactory'
+    ]
+
+}
+
+// Fix Gradle task dependency issue
+tasks.named('compileTestGroovy') {
+    dependsOn 'buildSpec'
+}
