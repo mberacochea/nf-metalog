@@ -119,7 +119,7 @@ class SqliteDatabaseService implements DatabaseService {
             final createTableSQL = """
                 CREATE TABLE IF NOT EXISTS metalog (
                     run_name TEXT NOT NULL,
-                    id TEXT NOT NULL,
+                    group_id TEXT NOT NULL,
                     ingested TEXT NOT NULL,
                     process TEXT,
                     task_id TEXT PRIMARY KEY,
@@ -174,7 +174,7 @@ class SqliteDatabaseService implements DatabaseService {
             // Use INSERT OR REPLACE for upsert behavior based on task_id
             // This allows tracking task status transitions (pending -> running -> cached/completed/failed)
             final upsertSQL = """
-                INSERT INTO metalog (run_name, ingested, id, process, task_id, status, metadata)
+                INSERT INTO metalog (run_name, ingested, group_id, process, task_id, status, metadata)
                 VALUES (?, datetime('now'), ?, ?, ?, ?, ?)
                 ON CONFLICT(task_id) DO UPDATE SET
                     ingested = datetime('now'),
