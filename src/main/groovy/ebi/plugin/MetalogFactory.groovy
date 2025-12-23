@@ -33,7 +33,7 @@ class MetalogFactory implements TraceObserverFactoryV2 {
         final configMap = session.config.navigate('metalog') as Map ?: [:]
         final config = new MetalogConfig(configMap)
 
-        if (config.enabled == false) {
+        if (!config.enabled) {
             return Collections.emptyList()
         }
 

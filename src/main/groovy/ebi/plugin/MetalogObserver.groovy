@@ -30,10 +30,10 @@ import nextflow.trace.event.TaskEvent
 @CompileStatic
 class MetalogObserver implements TraceObserverV2 {
 
-    private Session session
-    private String groupByKey
-    private String runName
-    private DatabaseService databaseService
+    private final Session session
+    private final String groupByKey
+    private final String runName
+    private final DatabaseService databaseService
 
     MetalogObserver(Session session, MetalogConfig config) {
         this.session = session
@@ -49,7 +49,7 @@ class MetalogObserver implements TraceObserverV2 {
 
         this.databaseService.initialize()
 
-        log.info "Metalog observer initialized: runName=${this.runName}, groupBy=${this.groupByKey}, dbFile=${dbFileName}"
+        log.info "Metalog observer initialized: runName={}, groupBy={}, dbFile={}", this.runName, this.groupByKey, dbFileName
     }
 
     @Override
@@ -90,10 +90,10 @@ class MetalogObserver implements TraceObserverV2 {
             }
 
             databaseService.insertOrUpdateTaskEvent(runName, groupId, event.handler, event.trace)
-            log.debug("Row inserted to database for task ${event.handler.task.name} with id=${groupId}")
+            log.debug("Row inserted to database for task {} with id={}", event?.handler?.task?.name ?: "unknown", groupId)
 
         } catch (Exception e) {
-            log.error("Error processing task ${event.handler.task.name}: ${e.message}", e)
+            log.error("Error processing task {}: {}", event?.handler?.task?.name ?: "unknown", e.message, e)
         }
     }
 
@@ -107,7 +107,7 @@ class MetalogObserver implements TraceObserverV2 {
                 databaseService.close()
             }
         } catch (Exception e) {
-            log.error("Error closing database connection: ${e.message}", e)
+            log.error("Error closing database connection: {}", e.message, e)
         }
     }
 
@@ -121,15 +121,15 @@ class MetalogObserver implements TraceObserverV2 {
             final task = event.handler.task
             final inputs = task.inputs
             if (!inputs || inputs.isEmpty()) {
-                log.debug("Task ${task.name} has no inputs, skipping")
+                log.debug("Task {} has no inputs, skipping", task?.name ?: "unknown")
                 return null
             }
 
             // Inputs is a Map where keys are like "valueinparam<0:0>", "valueinparam<0:1>", etc.
             // Find the first tuple element (valueinparam<0:0>) which should be the meta map
-            def meta = null
-            for (entry in inputs.entrySet()) {
-                def key = entry.getKey().toString()
+            Object meta = null
+            for (Map.Entry<?, Object> entry : inputs.entrySet()) {
+                String key = entry.getKey().toString()
                 // Look for the first element of the tuple (index 0:0)
                 if (key.contains('valueinparam<0:0>') || key.contains('param<0:0>')) {
                     meta = entry.getValue()
@@ -138,26 +138,26 @@ class MetalogObserver implements TraceObserverV2 {
             }
 
             if (meta == null) {
-                log.debug("Task ${task.name} has no tuple meta input, skipping")
+                log.debug("Task {} has no tuple meta input, skipping", task?.name ?: "unknown")
                 return null
             }
 
             // Meta should be a Map
             if (!(meta instanceof Map)) {
-                log.debug("Task ${task.name} meta is not a Map (type: ${meta.getClass()}), skipping")
+                log.debug("Task {} meta is not a Map (type: {}), skipping", task?.name ?: "unknown", meta.getClass())
                 return null
             }
 
             final metaMap = meta as Map
             if (!metaMap.containsKey(groupByKey)) {
-                log.warn("Task ${task.name} meta map does not contain key '${groupByKey}', skipping")
+                log.warn("Task {} meta map does not contain key '{}', skipping", task?.name ?: "unknown", groupByKey)
                 return null
             }
 
             return metaMap[groupByKey]?.toString()
 
         } catch (Exception e) {
-            log.error("Error extracting group ID from task ${event.handler.task.name}: ${e.message}", e)
+            log.error("Error extracting group ID from task {}: {}", event?.handler?.task?.name ?: "unknown", e.message, e)
             return null
         }
     }

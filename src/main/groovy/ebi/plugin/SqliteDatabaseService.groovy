@@ -72,6 +72,7 @@ class SqliteDatabaseService implements DatabaseService {
     private Thread createWorkerThread() {
         final thread = new Thread({
             log.info "SQLite worker thread started"
+            // We let the queue be drained after being shutdown
             while (!shutdown || !eventQueue.isEmpty()) {
                 try {
                     final event = eventQueue.poll(100, TimeUnit.MILLISECONDS)
@@ -81,9 +82,8 @@ class SqliteDatabaseService implements DatabaseService {
                 } catch (InterruptedException ignored) {
                     log.debug "Worker thread interrupted"
                     Thread.currentThread().interrupt()
-                    break
                 } catch (Exception e) {
-                    log.error("Error processing queued event: ${e.message}", e)
+                    log.error("Error processing queued event: {}", e.message, e)
                 }
             }
             log.info "SQLite worker thread finished, processed all queued events"
@@ -102,18 +102,16 @@ class SqliteDatabaseService implements DatabaseService {
             this.dbConnection = DriverManager.getConnection("jdbc:sqlite:${dbFile.toString()}")
 
             // Configure SQLite for concurrent access
-            final stmt = dbConnection.createStatement()
+            dbConnection.createStatement().withCloseable { stmt ->
+                // Enable WAL mode for better concurrent access (multiple readers + one writer)
+                stmt.execute("PRAGMA journal_mode=WAL")
 
-            // Enable WAL mode for better concurrent access (multiple readers + one writer)
-            stmt.execute("PRAGMA journal_mode=WAL")
+                // Wait up to 10 seconds when database is locked instead of failing immediately
+                stmt.execute("PRAGMA busy_timeout=10000")
 
-            // Wait up to 10 seconds when database is locked instead of failing immediately
-            stmt.execute("PRAGMA busy_timeout=10000")
-
-            // Faster writes (less fsync) - safe with WAL mode
-            stmt.execute("PRAGMA synchronous=NORMAL")
-
-            stmt.close()
+                // Faster writes (less fsync) - safe with WAL mode
+                stmt.execute("PRAGMA synchronous=NORMAL")
+            }
 
             // Create table if it doesn't exist with task_id as primary key
             final createTableSQL = """
@@ -128,7 +126,9 @@ class SqliteDatabaseService implements DatabaseService {
                 )
             """.stripIndent()
 
-            dbConnection.createStatement().execute(createTableSQL)
+            dbConnection.createStatement().withCloseable { stmt ->
+                stmt.execute(createTableSQL)
+            }
             log.info "SQLite table 'metalog' ready (WAL mode enabled, 30s busy timeout)"
 
             // Start the worker thread after DB is initialized
@@ -136,7 +136,7 @@ class SqliteDatabaseService implements DatabaseService {
             log.info "SQLite worker thread initialized"
 
         } catch (Exception e) {
-            log.error("Error initializing SQLite: ${e.message}", e)
+            log.error("Error initializing SQLite: {}", e.message, e)
             throw e
         }
     }
@@ -152,13 +152,13 @@ class SqliteDatabaseService implements DatabaseService {
 
             final queueSize = eventQueue.size()
             if (queueSize > 100 && queueSize % 100 == 0) {
-                log.warn "SQLite queue size is ${queueSize} - backpressure piling up"
+                log.warn "SQLite queue size is {} - backpressure piling up", queueSize
             }
         } catch (InterruptedException e) {
-            log.error("Interrupted while queueing task event for ${handler.task.name}: ${e.message}", e)
+            log.error("Interrupted while queueing task event for {}: {}", handler?.task?.name ?: "unknown", e.message, e)
             Thread.currentThread().interrupt()
         } catch (Exception e) {
-            log.error("Error queueing task event for ${handler.task.name}: ${e.message}", e)
+            log.error("Error queueing task event for {}: {}", handler?.task?.name ?: "unknown", e.message, e)
         }
     }
 
@@ -166,7 +166,6 @@ class SqliteDatabaseService implements DatabaseService {
      * Processes a single task event from the queue and performs the upsert
      */
     private void processTaskEvent(TaskEvent event) {
-        PreparedStatement stmt = null
         try {
             final String taskId = event.trace.get('task_id')?.toString()
             final JSONObject jsonMetadata = buildTraceJSON(event.trace)
@@ -182,27 +181,19 @@ class SqliteDatabaseService implements DatabaseService {
                     metadata = excluded.metadata
             """.stripIndent()
 
-            stmt = dbConnection.prepareStatement(upsertSQL)
+            dbConnection.prepareStatement(upsertSQL).withCloseable { PreparedStatement stmt ->
+                stmt.setString(1, event.runName)
+                stmt.setString(2, event.groupId)
+                stmt.setString(3, event.trace.get('process')?.toString())
+                stmt.setString(4, taskId)
+                stmt.setString(5, event.trace.get('status')?.toString())
+                stmt.setString(6, jsonMetadata.toString())
 
-            stmt.setString(1, event.runName)
-            stmt.setString(2, event.groupId)
-            stmt.setString(3, event.trace.get('process')?.toString())
-            stmt.setString(4, taskId)
-            stmt.setString(5, event.trace.get('status')?.toString())
-            stmt.setString(6, jsonMetadata.toString())
-
-            stmt.executeUpdate()
+                stmt.executeUpdate()
+            }
 
         } catch (Exception e) {
-            log.error("Error upserting to SQLite for task ${event.taskName}: ${e.message}", e)
-        } finally {
-            if (stmt != null) {
-                try {
-                    stmt.close()
-                } catch (Exception e) {
-                    log.warn("Error closing statement: ${e.message}")
-                }
-            }
+            log.error("Error upserting to SQLite for task {}: {}", event?.taskName ?: "unknown", e.message, e)
         }
     }
 
@@ -212,7 +203,7 @@ class SqliteDatabaseService implements DatabaseService {
         try {
             // Signal shutdown to worker thread
             shutdown = true
-            log.info "Signaled shutdown to SQLite worker thread (${eventQueue.size()} events remaining in queue)"
+            log.info "Signaled shutdown to SQLite worker thread ({} events remaining in queue)", eventQueue.size()
 
             // Wait for worker thread to finish processing all queued events
             if (workerThread != null && workerThread.isAlive()) {
@@ -229,10 +220,10 @@ class SqliteDatabaseService implements DatabaseService {
                 log.info "SQLite connection closed"
             }
         } catch (InterruptedException e) {
-            log.error("Interrupted while waiting for worker thread to finish: ${e.message}", e)
+            log.error("Interrupted while waiting for worker thread to finish: {}", e.message, e)
             Thread.currentThread().interrupt()
         } catch (Exception e) {
-            log.error("Error closing SQLite connection: ${e.message}", e)
+            log.error("Error closing SQLite connection: {}", e.message, e)
             throw e
         }
     }
@@ -240,7 +231,7 @@ class SqliteDatabaseService implements DatabaseService {
     /**
      * Builds a JSON object with all TraceRecord fields (except status which is a separate column)
      */
-    private JSONObject buildTraceJSON(TraceRecord trace) {
+    private static JSONObject buildTraceJSON(TraceRecord trace) {
         final json = new JSONObject()
 
         // Add all TraceRecord fields to JSON (status is excluded as it's a separate column)
@@ -254,8 +245,8 @@ class SqliteDatabaseService implements DatabaseService {
             'cpus', 'memory', 'disk', 'time'
         ]
 
-        fields.each { field ->
-            def value = trace.get(field)
+        fields.each { String field ->
+            Object value = trace.get(field)
             if (value != null) {
                 json.put(field, value)
             }
