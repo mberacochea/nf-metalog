@@ -1,15 +1,15 @@
-# CLAUDE.md
+# ai.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to agentic code assistants when working with code in this repository.
 
 ## Project Overview
 
 This is a Nextflow plugin (`nf-metalog`) that provides custom workflow execution tracking and extension capabilities. The plugin integrates with Nextflow's execution lifecycle through trace observers and extension points.
 
 **Key Components:**
-- **Provider:** ebi
+- **Provider:** EMBL-EBI
 - **Version:** 0.1.0
-- **Nextflow Compatibility:** 24.10.0+
+- **Nextflow Compatibility:** 25.10.0+
 - **Language:** Groovy
 - **Build System:** Gradle with Nextflow plugin support
 
@@ -56,7 +56,7 @@ The plugin implements two main extension mechanisms:
 
 ### 1. TraceObserver Pattern (MetalogFactory + MetalogObserver)
 
-The plugin uses Nextflow's `TraceObserverFactory` pattern to hook into workflow execution events:
+The plugin uses Nextflow's `TraceObserverFactoryV2` pattern to hook into workflow execution events:
 
 - **MetalogFactory** (`src/main/groovy/ebi/plugin/MetalogFactory.groovy`): Factory that creates observer instances
 - **MetalogObserver** (`src/main/groovy/ebi/plugin/MetalogObserver.groovy`): Implements lifecycle hooks:
@@ -68,12 +68,6 @@ The plugin uses Nextflow's `TraceObserverFactory` pattern to hook into workflow 
   - `onFlowComplete()` - Called when workflow finishes
 
 The observer has access to `TaskHandler` and `TraceRecord` objects which contain task metadata, inputs, outputs, and execution details.
-
-### 2. Plugin Extension Point (MetalogExtension)
-
-- **MetalogExtension** (`src/main/groovy/ebi/plugin/MetalogExtension.groovy`): Provides custom functions accessible from Nextflow scripts
-- Functions annotated with `@Function` can be imported and called in Nextflow pipelines
-- Currently implements a sample `sayHello()` function
 
 ### Plugin Entry Point
 

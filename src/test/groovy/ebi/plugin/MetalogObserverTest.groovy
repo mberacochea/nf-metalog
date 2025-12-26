@@ -7,6 +7,7 @@ import nextflow.trace.TraceRecord
 import nextflow.trace.event.TaskEvent
 import spock.lang.Specification
 import spock.lang.TempDir
+import spock.util.concurrent.PollingConditions
 import nextflow.config.spec.ConfigScope
 
 import java.nio.file.Path
@@ -49,7 +50,7 @@ class MetalogObserverTest extends Specification {
         result.first() instanceof MetalogObserver
     }
 
-    def 'should handle onTaskComplete event' () {
+    def 'should handle different task event types'() {
         given:
         def session = Mock(Session) {
             getRunName() >> 'test-run'
@@ -58,79 +59,17 @@ class MetalogObserverTest extends Specification {
         def config = new MetalogConfig([:])
         def observer = new MetalogObserver(session, config)
 
-        and:
-        def task = Mock(TaskRun) {
-            getName() >> 'TEST_PROCESS'
-            getInputs() >> ['valueinparam<0:0>': [id: 'sample1']]
-        }
-        def handler = Mock(TaskHandler) {
-            getTask() >> task
-        }
-        def trace = Mock(TraceRecord) {
-            get(_) >> 'value'
-        }
-        def event = new TaskEvent(handler, trace)
-
         when:
-        observer.onTaskComplete(event)
+        // Test all three event types with different samples
+        def events = [
+            createTaskEvent('TEST_PROCESS', 'sample1', 'onTaskComplete'),
+            createTaskEvent('CACHED_PROCESS', 'sample2', 'onTaskCached'),
+            createTaskEvent('SUBMIT_PROCESS', 'sample3', 'onTaskSubmit')
+        ]
 
-        then:
-        noExceptionThrown()
-    }
-
-    def 'should handle onTaskCached event' () {
-        given:
-        def session = Mock(Session) {
-            getRunName() >> 'test-run'
-            getWorkDir() >> tempDir
+        events.each { event ->
+            event.callback(observer, event.taskEvent)
         }
-        def config = new MetalogConfig([:])
-        def observer = new MetalogObserver(session, config)
-
-        and:
-        def task = Mock(TaskRun) {
-            getName() >> 'CACHED_PROCESS'
-            getInputs() >> ['valueinparam<0:0>': [id: 'sample2']]
-        }
-        def handler = Mock(TaskHandler) {
-            getTask() >> task
-        }
-        def trace = Mock(TraceRecord) {
-            get(_) >> 'value'
-        }
-        def event = new TaskEvent(handler, trace)
-
-        when:
-        observer.onTaskCached(event)
-
-        then:
-        noExceptionThrown()
-    }
-
-    def 'should handle onTaskSubmit event' () {
-        given:
-        def session = Mock(Session) {
-            getRunName() >> 'test-run'
-            getWorkDir() >> tempDir
-        }
-        def config = new MetalogConfig([:])
-        def observer = new MetalogObserver(session, config)
-
-        and:
-        def task = Mock(TaskRun) {
-            getName() >> 'SUBMIT_PROCESS'
-            getInputs() >> ['valueinparam<0:0>': [id: 'sample3']]
-        }
-        def handler = Mock(TaskHandler) {
-            getTask() >> task
-        }
-        def trace = Mock(TraceRecord) {
-            get(_) >> 'value'
-        }
-        def event = new TaskEvent(handler, trace)
-
-        when:
-        observer.onTaskSubmit(event)
 
         then:
         noExceptionThrown()
@@ -179,20 +118,7 @@ class MetalogObserverTest extends Specification {
         noExceptionThrown()
     }
 
-    def 'should use SQLite by default when no database service provided' () {
-        given:
-        def session = Mock(Session) {
-            getRunName() >> 'test-run'
-            getWorkDir() >> tempDir
-        }
-        def config = new MetalogConfig([:])
 
-        when:
-        def observer = new MetalogObserver(session, config)
-
-        then:
-        notThrown(Exception)
-    }
 
     def 'should respect custom groupKey' () {
         given:
@@ -223,8 +149,109 @@ class MetalogObserverTest extends Specification {
         noExceptionThrown()
     }
 
+    def 'should insert task events into database and verify data'() {
+        given:
+        def session = Mock(Session) {
+            getRunName() >> 'integration-test-run'
+            getWorkDir() >> tempDir
+        }
+        def config = new MetalogConfig([groupKey: 'id'])
+        def observer = new MetalogObserver(session, config)
+
+        and:
+        def dbFile = tempDir.resolve('metalog.db')
+
+        when:
+        // Create and process multiple task events
+        def events = [
+            createTaskEvent('PROCESS_A', 'sample-1', 'onTaskComplete'),
+            createTaskEvent('PROCESS_B', 'sample-2', 'onTaskCached'),
+            createTaskEvent('PROCESS_A', 'sample-3', 'onTaskSubmit')
+        ]
+
+        events.each { event ->
+            event.callback(observer, event.taskEvent)
+        }
+
+        and: 'wait for worker thread to process events'
+        new PollingConditions(timeout: 15, delay: 1.0).eventually {
+            def count = TestDatabaseUtils.withConnection(dbFile) { conn ->
+                TestDatabaseUtils.tableExists(conn, 'metalog') ? 
+                    TestDatabaseUtils.getRowCount(conn, 'metalog') : 0
+            }
+            
+            println "DEBUG: count=${count}"
+            count == 3
+        }
+
+        then: 'should have inserted all events into database'
+        def rowCount = TestDatabaseUtils.withConnection(dbFile) { conn ->
+            TestDatabaseUtils.getRowCount(conn, 'metalog')
+        }
+        rowCount == 3
+
+        and: 'should have correct run name'
+        def runName = TestDatabaseUtils.withConnection(dbFile) { conn ->
+            TestDatabaseUtils.getSingleStringResult(conn, "SELECT DISTINCT run_name FROM metalog")
+        }
+        runName == 'integration-test-run'
+
+        and: 'should have correct group IDs'
+        def groupIds = TestDatabaseUtils.withConnection(dbFile) { conn ->
+            TestDatabaseUtils.getColumnValues(conn, "SELECT group_id FROM metalog ORDER BY group_id", "group_id")
+        }
+        groupIds == ['sample-1', 'sample-2', 'sample-3']
+
+        cleanup:
+        observer.onFlowComplete()
+    }
+
     // TODO: Add integration test to verify actual SQLite database insertion
     // TODO: Add test for invalid meta (not a Map type)
     // TODO: Add test for missing groupBy key in meta map
     // TODO: Add test to verify JSON metadata structure in database
+
+    // Helper method to create task events with different types
+    private static class TaskEventData {
+        final TaskEvent taskEvent
+        final Closure callback
+
+        TaskEventData(TaskEvent taskEvent, Closure callback) {
+            this.taskEvent = taskEvent
+            this.callback = callback
+        }
+    }
+
+    private TaskEventData createTaskEvent(String processName, String sampleId, String eventType) {
+        def task = Mock(TaskRun) {
+            getName() >> processName
+            getInputs() >> ['valueinparam<0:0>': [id: sampleId]]
+        }
+        def handler = Mock(TaskHandler) {
+            getTask() >> task
+        }
+        def trace = Mock(TraceRecord) {
+            get('task_id') >> "task-${sampleId}"
+            get(_) >> 'value'
+        }
+        def event = new TaskEvent(handler, trace)
+
+        def callback
+        switch (eventType) {
+            case 'onTaskComplete':
+                callback = { observer, evt -> observer.onTaskComplete(evt) }
+                break
+            case 'onTaskCached':
+                callback = { observer, evt -> observer.onTaskCached(evt) }
+                break
+            case 'onTaskSubmit':
+                callback = { observer, evt -> observer.onTaskSubmit(evt) }
+                break
+            default:
+                throw new IllegalArgumentException("Unknown event type: ${eventType}")
+        }
+
+        return new TaskEventData(event, callback)
+    }
+
 }

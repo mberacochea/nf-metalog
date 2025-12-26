@@ -12,7 +12,7 @@ dependencies {
 nextflowPlugin {
     nextflowVersion = '25.10.0'
 
-    provider = 'ebi'
+    provider = 'EMBL-EBI'
     className = 'ebi.plugin.MetalogPlugin'
     extensionPoints = [
         'ebi.plugin.MetalogFactory'
