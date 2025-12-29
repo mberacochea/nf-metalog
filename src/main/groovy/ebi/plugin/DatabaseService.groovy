@@ -51,4 +51,12 @@ interface DatabaseService {
      * @throws Exception if close fails
      */
     void close()
+
+    /**
+     * Fetch all data from the metalog table with metadata extracted from JSON column.
+     * This provides a complete flattened view of all task metadata fields ready for CSV export.
+     * @return A list of maps representing the rows with all metadata extracted into separate columns
+     * @throws Exception if fetching data fails
+     */
+    List<Map<String, Object>> fetchAllData()
 }

@@ -1,59 +1,113 @@
-process SLEEP_ECHO {
+// Simple test pipeline with actual compute jobs using quay.io containers
 
+// Data processing with CentOS container from quay.io
+process DATA_PROCESSING {
+    container 'quay.io/centos/centos:7'
+    
     input:
-    tuple val(meta), val(second_value)
-
+    tuple val(meta), val(data_value)
+    
+    output:
+    path "output_${meta.id}.txt"
+    
     script:
-    def random_sleep = 15 + (int)(Math.random() * 30)  // Random sleep between 15-45 seconds
     """
-    sleep ${random_sleep}
-    echo 'OK.. worked for ${meta.id} after ${random_sleep} seconds'
+    echo "Processing sample ${meta.id} with data: ${data_value}"
+    
+    # Create some data and do simple processing
+    for i in {1..50}; do
+        echo "Line \$i for sample ${meta.id}" >> temp_data.txt
+    done
+    
+    # Count lines and characters
+    lines=\$(wc -l < temp_data.txt)
+    chars=\$(wc -c < temp_data.txt)
+    words=\$(wc -w < temp_data.txt)
+    
+    # Write results
+    echo "Sample: ${meta.id}" > output_${meta.id}.txt
+    echo "Lines processed: \$lines" >> output_${meta.id}.txt
+    echo "Characters: \$chars" >> output_${meta.id}.txt
+    echo "Words: \$words" >> output_${meta.id}.txt
+    
+    # Random sleep to simulate variable processing
+    sleep \$((RANDOM % 2 + 1))
     """
 }
 
-process SLEEP_FAIL {
-
-    errorStrategy "ignore"
-
+// Text processing with CentOS container from quay.io
+process TEXT_ANALYSIS {
+    container 'quay.io/centos/centos:7'
+    
     input:
-    tuple val(meta), val(second_value)
-
+    tuple val(meta), val(data)
+    
+    output:
+    path "text_${meta.id}.txt"
+    
     script:
-    def random_sleep = 15 + (int)(Math.random() * 20)  // Random sleep between 15-35 seconds
     """
-    sleep ${random_sleep}
-    echo 'Failing ${meta.id} after ${random_sleep} seconds'
-    exit 1
+    # Generate and analyze text
+    text="Sample ${meta.id} processing text data with some words and sentences for analysis"
+    echo "\$text" > text_${meta.id}.txt
+    
+    # Simple text metrics
+    words=\$(echo "\$text" | wc -w)
+    chars=\$(echo "\$text" | wc -c)
+    
+    echo "Word count: \$words" >> text_${meta.id}.txt
+    echo "Character count: \$chars" >> text_${meta.id}.txt
+    
+    sleep \$((RANDOM % 2))
     """
 }
 
+// Simple math calculations with CentOS container from quay.io
+process SIMPLE_MATH {
+    container 'quay.io/centos/centos:7'
+    
+    input:
+    tuple val(meta), val(data)
+    
+    output:
+    path "math_${meta.id}.txt"
+    
+    script:
+    """
+    # Simple math using basic shell commands
+    echo "Math calculations for sample ${meta.id}" > math_${meta.id}.txt
+    
+    # Generate some numbers and do simple calculations
+    for i in {1..10}; do
+        num=\$((RANDOM % 100 + 1))
+        echo "\$num" >> numbers.txt
+    done
+    
+    # Calculate sum and average
+    sum=\$(awk '{s+=\$1} END {print s}' numbers.txt)
+    count=\$(wc -l < numbers.txt)
+    avg=\$(echo "scale=2; \$sum / \$count" | bc)
+    
+    echo "Sum: \$sum" >> math_${meta.id}.txt
+    echo "Count: \$count" >> math_${meta.id}.txt
+    echo "Average: \$avg" >> math_${meta.id}.txt
+    
+    sleep \$((RANDOM % 2 + 1))
+    """
+}
 
 workflow {
-    // Create a channel with proper tuple structure - extended to 20 samples
-    def input_ch = Channel.of(
-        [[id: 'sample1', name: 'test1'], 'value1'],
-        [[id: 'sample2', name: 'test2'], 'value2'],
-        [[id: 'sample3', name: 'test3'], 'value3'],
-        [[id: 'sample4', name: 'test4'], 'value4'],
-        [[id: 'sample5', name: 'test5'], 'value5'],
-        [[id: 'sample6', name: 'test6'], 'value6'],
-        [[id: 'sample7', name: 'test7'], 'value7'],
-        [[id: 'sample8', name: 'test8'], 'value8'],
-        [[id: 'sample9', name: 'test9'], 'value9'],
-        [[id: 'sample10', name: 'test10'], 'value10'],
-        [[id: 'sample11', name: 'test11'], 'value11'],
-        [[id: 'sample12', name: 'test12'], 'value12'],
-        [[id: 'sample13', name: 'test13'], 'value13'],
-        [[id: 'sample14', name: 'test14'], 'value14'],
-        [[id: 'sample15', name: 'test15'], 'value15'],
-        [[id: 'sample16', name: 'test16'], 'value16'],
-        [[id: 'sample17', name: 'test17'], 'value17'],
-        [[id: 'sample18', name: 'test18'], 'value18'],
-        [[id: 'sample19', name: 'test19'], 'value19'],
-        [[id: 'sample20', name: 'test20'], 'value20']
+    // Create test data - 5 samples
+    def samples = Channel.of(
+        [[id: 'sample1', name: 'test1'], 'input_data_1'],
+        [[id: 'sample2', name: 'test2'], 'input_data_2'],
+        [[id: 'sample3', name: 'test3'], 'input_data_3'],
+        [[id: 'sample4', name: 'test4'], 'input_data_4'],
+        [[id: 'sample5', name: 'test5'], 'input_data_5']
     )
-
-    SLEEP_ECHO(input_ch)
-
-    SLEEP_FAIL(input_ch)
+    
+    // Run all processes
+    DATA_PROCESSING(samples)
+    TEXT_ANALYSIS(samples)
+    SIMPLE_MATH(samples)
 }

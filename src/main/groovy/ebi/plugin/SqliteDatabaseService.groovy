@@ -20,6 +20,7 @@ import java.nio.file.Path
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.PreparedStatement
+import java.sql.ResultSet
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -253,5 +254,124 @@ class SqliteDatabaseService implements DatabaseService {
         }
 
         return json
+    }
+
+    /**
+     * Extracts all metadata from the JSON column into separate columns for CSV export.
+     * This provides a complete flattened view of all task metadata fields.
+     * 
+     * @return A list of maps where each map represents a row with all metadata extracted
+     *         into separate columns, ready for CSV writing or other data processing
+     */
+    List<Map<String, Object>> fetchAllData() {
+        try {
+            if (dbConnection == null || dbConnection.isClosed()) {
+                throw new IllegalStateException("Database connection is not open")
+            }
+
+            // Clean, readable SQL query that extracts all metadata fields from JSON
+            final query = """
+                SELECT 
+                    run_name,
+                    group_id,
+                    ingested,
+                    process,
+                    task_id,
+                    status,
+                    -- Task identification and execution metadata
+                    json_extract(metadata, '\$.hash') as hash,
+                    json_extract(metadata, '\$.native_id') as native_id,
+                    json_extract(metadata, '\$.tag') as tag,
+                    json_extract(metadata, '\$.name') as name,
+                    json_extract(metadata, '\$.exit') as exit,
+                    json_extract(metadata, '\$.submit') as submit,
+                    json_extract(metadata, '\$.start') as start,
+                    json_extract(metadata, '\$.complete') as complete,
+                    json_extract(metadata, '\$.duration') as duration,
+                    json_extract(metadata, '\$.realtime') as realtime,
+                    -- Resource usage metrics
+                    json_extract(metadata, '\$.cpu') as cpu,
+                    json_extract(metadata, '\$.peak_rss') as peak_rss,
+                    json_extract(metadata, '\$.peak_vmem') as peak_vmem,
+                    json_extract(metadata, '\$.rchar') as rchar,
+                    json_extract(metadata, '\$.wchar') as wchar,
+                    json_extract(metadata, '\$.syscr') as syscr,
+                    json_extract(metadata, '\$.syscw') as syscw,
+                    json_extract(metadata, '\$.read_bytes') as read_bytes,
+                    json_extract(metadata, '\$.write_bytes') as write_bytes,
+                    json_extract(metadata, '\$.mem') as mem,
+                    json_extract(metadata, '\$.vmem') as vmem,
+                    json_extract(metadata, '\$.rss') as rss,
+                    -- Environment and execution context
+                    json_extract(metadata, '\$.container') as container,
+                    json_extract(metadata, '\$.attempt') as attempt,
+                    json_extract(metadata, '\$.workdir') as workdir,
+                    json_extract(metadata, '\$.queue') as queue,
+                    -- Resource requests
+                    json_extract(metadata, '\$.cpus') as cpus,
+                    json_extract(metadata, '\$.memory') as memory,
+                    json_extract(metadata, '\$.disk') as disk,
+                    json_extract(metadata, '\$.time') as time
+                FROM metalog
+            """
+
+            List<Map<String, Object>> result = []
+            dbConnection.createStatement().withCloseable { stmt ->
+                stmt.executeQuery(query).withCloseable { ResultSet rs ->
+                    while (rs.next()) {
+                        Map<String, Object> row = [:]
+                        
+                        // Basic task information
+                        row.run_name = rs.getString("run_name")
+                        row.group_id = rs.getString("group_id")
+                        row.ingested = rs.getString("ingested")
+                        row.process = rs.getString("process")
+                        row.task_id = rs.getString("task_id")
+                        row.status = rs.getString("status")
+                        
+                        // Task metadata (all lowercase, consistent naming)
+                        row.hash = rs.getString("hash")
+                        row.native_id = rs.getString("native_id")
+                        row.tag = rs.getString("tag")
+                        row.name = rs.getString("name")
+                        row.exit = rs.getString("exit")
+                        row.submit = rs.getString("submit")
+                        row.start = rs.getString("start")
+                        row.complete = rs.getString("complete")
+                        row.duration = rs.getString("duration")
+                        row.realtime = rs.getString("realtime")
+                        // Resource usage
+                        row.cpu = rs.getString("cpu")
+                        row.peak_rss = rs.getString("peak_rss")
+                        row.peak_vmem = rs.getString("peak_vmem")
+                        row.rchar = rs.getString("rchar")
+                        row.wchar = rs.getString("wchar")
+                        row.syscr = rs.getString("syscr")
+                        row.syscw = rs.getString("syscw")
+                        row.read_bytes = rs.getString("read_bytes")
+                        row.write_bytes = rs.getString("write_bytes")
+                        row.mem = rs.getString("mem")
+                        row.vmem = rs.getString("vmem")
+                        row.rss = rs.getString("rss")
+                        // Environment
+                        row.container = rs.getString("container")
+                        row.attempt = rs.getString("attempt")
+                        row.workdir = rs.getString("workdir")
+                        row.queue = rs.getString("queue")
+                        // Resource requests
+                        row.cpus = rs.getString("cpus")
+                        row.memory = rs.getString("memory")
+                        row.disk = rs.getString("disk")
+                        row.time = rs.getString("time")
+                        
+                        result.add(row)
+                    }
+                }
+            }
+            return result
+        } catch (Exception e) {
+            log.error("Error fetching data with extracted metadata: {}", e.message, e)
+            throw e
+        }
     }
 }

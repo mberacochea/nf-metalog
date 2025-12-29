@@ -104,8 +104,12 @@ class MetalogObserver implements TraceObserverV2 {
             if (databaseService == null) {
                 log.error "The databaseService is null, that really shouldn't be happening."
             } else {
+                // Generate the HTML report before closing the database
+                log.info 'Metalog: generating HTML report.'
+                GenerateMetalogHtml.generate(databaseService, session.getWorkflowMetadata())
                 databaseService.close()
             }
+
         } catch (Exception e) {
             log.error("Error closing database connection: {}", e.message, e)
         }
