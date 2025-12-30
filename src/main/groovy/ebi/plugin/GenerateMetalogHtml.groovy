@@ -22,21 +22,34 @@ import nextflow.script.WorkflowMetadata
 
 import java.nio.file.Files
 import java.nio.file.Paths
+import java.io.StringWriter
+import java.io.FileNotFoundException
 
 class GenerateMetalogHtml {
 
     static void generate(DatabaseService databaseService, WorkflowMetadata workflow) {
         try {
-            def csvData = databaseService.fetchAllData()
+            def csvData = databaseService.fetchAllData(workflow.runName)
 
             // TODO: the csv file needs to be a parameter
             writeCsv(csvData, "metalog.csv")
 
-            def templateString = getTemplateFromClasspath("report.html")
+            def templateString = readAsset("nf-metalog_report.html")
+            def jsAssets = []
+            def cssAssets = []
+            jsAssets.add(readAsset("assets/plotly-latest.min.js"))
+            jsAssets.add(readAsset("assets/gridjs.umd.js"))
+            jsAssets.add(readAsset("assets/bootstrap.bundle.min.js"))
+            jsAssets.add(readAsset("assets/nf-metalog_report.js"))
+            cssAssets.add(readAsset("assets/bootstrap.min.css"))
+            cssAssets.add(readAsset("assets/gridjs-mermaid.min.css"))
+            cssAssets.add(readAsset("assets/nf-metalog_report.css"))
 
             def binding = [
                 workflow: workflow,
-                data: new JsonBuilder( csvData ).toString()
+                data: new JsonBuilder( csvData ).toString(),
+                js_assets: jsAssets,
+                css_assets: cssAssets
             ]
 
             def engine = new GStringTemplateEngine()
@@ -53,26 +66,32 @@ class GenerateMetalogHtml {
     }
 
     /**
-     * Pull the template as a string
-     * @param templateName
-     * @return
+     * Read the document HTML template from the application classpath
+     *
+     * @param path A resource path location
+     * @return The loaded template as a string
      */
-    static String getTemplateFromClasspath(String templateName) {
-        // Try to load from classpath first
-        def classLoader = GenerateMetalogHtml.class.classLoader
-        def resource = classLoader.getResource(templateName)
-
-        if (resource != null) {
-            return resource.text
+    private static String readAsset(String path) {
+        final writer = new StringWriter()
+        // Ensure path starts with "/" for proper resource loading
+        String resourcePath = path.startsWith("/") ? path : "/${path}"
+        final res = GenerateMetalogHtml.class.getResourceAsStream(resourcePath)
+        
+        if (res == null) {
+            throw new FileNotFoundException("Resource not found: ${resourcePath}")
         }
-
-        // Fallback to direct file access (for development)
-        def file = new File("src/main/resources/${templateName}")
-        if (file.exists()) {
-            return file.text
+        
+        try {
+            int ch
+            while ((ch = res.read()) != -1) {
+                writer.append(ch as char)
+            }
+            return writer.toString()
+        } finally {
+            if (res != null) {
+                res.close()
+            }
         }
-
-        throw new FileNotFoundException("Template ${templateName} not found in classpath or file system")
     }
 
     /**

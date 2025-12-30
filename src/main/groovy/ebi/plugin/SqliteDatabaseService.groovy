@@ -16,6 +16,7 @@
 
 package ebi.plugin
 
+import javax.xml.crypto.dsig.TransformService
 import java.nio.file.Path
 import java.sql.Connection
 import java.sql.DriverManager
@@ -120,7 +121,7 @@ class SqliteDatabaseService implements DatabaseService {
                     run_name TEXT NOT NULL,
                     group_id TEXT NOT NULL,
                     ingested TEXT NOT NULL,
-                    process TEXT,
+                    process_name TEXT,
                     task_id TEXT PRIMARY KEY,
                     status TEXT,
                     metadata TEXT
@@ -174,7 +175,7 @@ class SqliteDatabaseService implements DatabaseService {
             // Use INSERT OR REPLACE for upsert behavior based on task_id
             // This allows tracking task status transitions (pending -> running -> cached/completed/failed)
             final upsertSQL = """
-                INSERT INTO metalog (run_name, ingested, group_id, process, task_id, status, metadata)
+                INSERT INTO metalog (run_name, ingested, group_id, process_name, task_id, status, metadata)
                 VALUES (?, datetime('now'), ?, ?, ?, ?, ?)
                 ON CONFLICT(task_id) DO UPDATE SET
                     ingested = datetime('now'),
@@ -185,7 +186,7 @@ class SqliteDatabaseService implements DatabaseService {
             dbConnection.prepareStatement(upsertSQL).withCloseable { PreparedStatement stmt ->
                 stmt.setString(1, event.runName)
                 stmt.setString(2, event.groupId)
-                stmt.setString(3, event.trace.get('process')?.toString())
+                stmt.setString(3, event.trace.getSimpleName())
                 stmt.setString(4, taskId)
                 stmt.setString(5, event.trace.get('status')?.toString())
                 stmt.setString(6, jsonMetadata.toString())
@@ -234,22 +235,11 @@ class SqliteDatabaseService implements DatabaseService {
      */
     private static JSONObject buildTraceJSON(TraceRecord trace) {
         final json = new JSONObject()
-
         // Add all TraceRecord fields to JSON (status is excluded as it's a separate column)
-        final fields = [
-            'hash', 'native_id', 'tag', 'name', 'exit',
-            'submit', 'start', 'complete', 'duration', 'realtime',
-            '%cpu', 'peak_rss', 'peak_vmem', 'rchar', 'wchar',
-            'syscr', 'syscw', 'read_bytes', 'write_bytes',
-            '%mem', 'vmem', 'rss', 'cpu_model', 'container',
-            'attempt', 'workdir', 'scratch', 'queue',
-            'cpus', 'memory', 'disk', 'time'
-        ]
-
-        fields.each { String field ->
-            Object value = trace.get(field)
+        TraceRecord.FIELDS.each { name, _type ->
+            Object value = trace.get(name)
             if (value != null) {
-                json.put(field, value)
+                json.put(name, value)
             }
         }
 
@@ -259,11 +249,13 @@ class SqliteDatabaseService implements DatabaseService {
     /**
      * Extracts all metadata from the JSON column into separate columns for CSV export.
      * This provides a complete flattened view of all task metadata fields.
-     * 
+     *
+     * @param runName The Nextflow run name
      * @return A list of maps where each map represents a row with all metadata extracted
      *         into separate columns, ready for CSV writing or other data processing
      */
-    List<Map<String, Object>> fetchAllData() {
+    List<Map<String, Object>> fetchAllData(String runName) {
+        List<Map<String, Object>> result = []
         try {
             if (dbConnection == null || dbConnection.isClosed()) {
                 throw new IllegalStateException("Database connection is not open")
@@ -275,14 +267,13 @@ class SqliteDatabaseService implements DatabaseService {
                     run_name,
                     group_id,
                     ingested,
-                    process,
+                    process_name,
                     task_id,
                     status,
                     -- Task identification and execution metadata
                     json_extract(metadata, '\$.hash') as hash,
                     json_extract(metadata, '\$.native_id') as native_id,
                     json_extract(metadata, '\$.tag') as tag,
-                    json_extract(metadata, '\$.name') as name,
                     json_extract(metadata, '\$.exit') as exit,
                     json_extract(metadata, '\$.submit') as submit,
                     json_extract(metadata, '\$.start') as start,
@@ -313,27 +304,26 @@ class SqliteDatabaseService implements DatabaseService {
                     json_extract(metadata, '\$.disk') as disk,
                     json_extract(metadata, '\$.time') as time
                 FROM metalog
+                WHERE run_name = ?
             """
-
-            List<Map<String, Object>> result = []
-            dbConnection.createStatement().withCloseable { stmt ->
-                stmt.executeQuery(query).withCloseable { ResultSet rs ->
+            dbConnection.prepareStatement(query).withCloseable { stmt ->
+                stmt.setString(1, runName)
+                stmt.executeQuery().withCloseable { ResultSet rs ->
                     while (rs.next()) {
                         Map<String, Object> row = [:]
-                        
+
                         // Basic task information
                         row.run_name = rs.getString("run_name")
                         row.group_id = rs.getString("group_id")
                         row.ingested = rs.getString("ingested")
-                        row.process = rs.getString("process")
+                        row.process_name = rs.getString("process_name")
                         row.task_id = rs.getString("task_id")
                         row.status = rs.getString("status")
-                        
+
                         // Task metadata (all lowercase, consistent naming)
                         row.hash = rs.getString("hash")
                         row.native_id = rs.getString("native_id")
                         row.tag = rs.getString("tag")
-                        row.name = rs.getString("name")
                         row.exit = rs.getString("exit")
                         row.submit = rs.getString("submit")
                         row.start = rs.getString("start")
@@ -363,15 +353,14 @@ class SqliteDatabaseService implements DatabaseService {
                         row.memory = rs.getString("memory")
                         row.disk = rs.getString("disk")
                         row.time = rs.getString("time")
-                        
+
                         result.add(row)
                     }
                 }
             }
-            return result
         } catch (Exception e) {
-            log.error("Error fetching data with extracted metadata: {}", e.message, e)
-            throw e
+            log.error("Error fetching data with extracted metadata: {}, no nf-metalog report will be generated.", e.message, e)
         }
+        return result
     }
 }

@@ -55,8 +55,9 @@ interface DatabaseService {
     /**
      * Fetch all data from the metalog table with metadata extracted from JSON column.
      * This provides a complete flattened view of all task metadata fields ready for CSV export.
+     * @param runName The Nextflow run name
      * @return A list of maps representing the rows with all metadata extracted into separate columns
      * @throws Exception if fetching data fails
      */
-    List<Map<String, Object>> fetchAllData()
+    List<Map<String, Object>> fetchAllData(String runName)
 }

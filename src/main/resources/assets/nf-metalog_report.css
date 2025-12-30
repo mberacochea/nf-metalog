@@ -1,0 +1,93 @@
+/* nf-metalog colours */
+:root {
+    --metalog-primary: #0d6efd;
+    --metalog-success: #198754;
+    --metalog-warning: #ffc107;
+    --metalog-info: #0dcaf0;
+    --metalog-light: #f8f9fa;
+}
+
+/* Light gray background for the entire report */
+body {
+    background-color: #f8f9fa;
+}
+
+/* White background for main content area */
+main.container {
+    background-color: white;
+    border-radius: 0.5rem;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    padding: 2rem;
+}
+
+/*
+.chart-container {
+    height: 300px;
+}
+*/
+
+/* Minimal custom CSS for nf-metalog specific elements */
+.nf-command {
+    font-family: monospace;
+    font-size: 0.85em;
+    background-color: #f8f9fa;
+    padding: 0.5rem;
+    border-radius: 0.25rem;
+    overflow-x: auto;
+    max-height: 200px;
+}
+
+/* Status badge styling - enhanced with icons and better visibility */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.35rem 0.75rem;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    gap: 0.5rem;
+    transition: all 0.2s;
+}
+
+.status-badge:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.status-badge::before {
+    content: '';
+    display: inline-block;
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 50%;
+    background-color: currentColor;
+}
+
+.status-completed { background-color: #d1e7dd; color: #0f5132; }
+.status-failed { background-color: #f8d7da; color: #842029; }
+.status-running { background-color: #fff3cd; color: #664d03; }
+.status-cached { background-color: #cff4fc; color: #055160; }
+.status-unknown { background-color: #e2e3e5; color: #383d41; }
+
+.task-status-completed { background-color: #d1e7dd; color: #0f5132; }
+.task-status-failed { background-color: #f8d7da; color: #842029; }
+.task-status-running { background-color: #fff3cd; color: #664d03; }
+.task-status-cached { background-color: #cff4fc; color: #055160; }
+.task-status-unknown { background-color: #e2e3e5; color: #383d41; }
+
+/* Clickable table rows - cursor and hover effects */
+.gridjs-tr:not(.gridjs-header):hover {
+    cursor: pointer;
+    background-color: #f8f9fa !important;
+}
+
+.gridjs-tr.selected-row {
+    background-color: #d1e7dd !important;
+}
+
+/* Sample selection visual feedback */
+.gridjs-tr.selected-row {
+    background-color: #d1e7dd !important;
+    border-left: 3px solid #198754;
+    transition: all 0.2s;
+}

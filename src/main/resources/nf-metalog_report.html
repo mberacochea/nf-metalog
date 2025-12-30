@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>[${workflow.runName}] nf-metalog report</title>
+    <!-- CSS Assets -->
+    <% css_assets.each { css -> %>
+    <style>
+        <%= css %>
+    </style>
+    <% } %>
+    <!-- Make data globally available for debugging and easier access -->
+    <script>
+        window.nfMetalogData = ${data};
+    </script>
+    <!-- JavaScript Assets -->
+    <% js_assets.each { js -> %>
+    <script>
+        <%= js %>
+    </script>
+    <% } %>
+</head>
+<body>
+    <!-- Bootstrap Header -->
+    <header class="bg-light mb-4">
+        <div class="container py-4">
+            <h1 class="display-5 mb-2">Nextflow Workflow Report</h1>
+            <p class="lead text-muted">[${workflow.runName}]</p>
+        </div>
+    </header>
+    
+    <!-- Navigation Bar with Anchor Links -->
+    <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom sticky-top">
+        <div class="container">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#overview">Overview</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#metadata">Metadata</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#execution">Execution</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#samples">Samples</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#resources">Resources</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#tasks">Tasks</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Main Content Container -->
+    <main class="container mb-5" id="main-content">
+        
+        <!-- Workflow Overview Section -->
+        <section class="mb-5" id="overview">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="mb-0">Workflow Overview</h2>
+                </div>
+                <div class="card-body">
+                    <div class="col-md-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">Status</h5>
+                                <p class="card-text">
+                                    <span class="badge bg-${workflow.success ? 'success' : 'danger'}">
+                                        ${workflow.success ? 'Completed' : 'Failed'}
+                                    </span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">Duration</h5>
+                                <p class="card-text">${workflow.duration}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">Samples Processed</h5>
+                                <p class="card-text" id="sample-count">0</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">Total Tasks</h5>
+                                <p class="card-text" id="total-tasks">0</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Workflow Metadata Section -->
+        <section class="mb-5" id="metadata">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="mb-0">Workflow Metadata</h2>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-12">
+                            <strong>Nextflow Command:</strong>
+                            <div class="bg-light p-2 rounded mt-1">
+                                <samp>
+                                    ${workflow.commandLine}
+                                </samp>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Launch Directory:</strong>
+                            <div class="text-muted">${workflow.launchDir}</div>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Work Directory:</strong>
+                            <div class="text-muted">${workflow.workDir.toUriString()}</div>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Project Directory:</strong>
+                            <div class="text-muted">${workflow.projectDir}</div>
+                        </div>
+                        <% if (workflow.scriptName) { %>
+                        <div class="col-md-6">
+                            <strong>Script Name:</strong>
+                            <div>${workflow.scriptName}</div>
+                        </div>
+                        <% } %>
+                        <% if (workflow.scriptId) { %>
+                        <div class="col-md-6">
+                            <strong>Script ID:</strong>
+                            <div><code>${workflow.scriptId}</code></div>
+                        </div>
+                        <% } %>
+                        <div class="col-md-6">
+                            <strong>Workflow Session:</strong>
+                            <div><code>${workflow.sessionId}</code></div>
+                        </div>
+                        <% if (workflow.repository) { %>
+                        <div class="col-md-6">
+                            <strong>Workflow Repository:</strong>
+                            <div><code>${workflow.repository}</code></div>
+                        </div>
+                        <% } %>
+                        <div class="col-md-6">
+                            <strong>Workflow Profile:</strong>
+                            <div>${workflow.profile}</div>
+                        </div>
+                        <% if (workflow.container) { %>
+                        <div class="col-md-6">
+                            <strong>Workflow Container:</strong>
+                            <div class="text-muted">${workflow.container}</div>
+                        </div>
+                        <% } %>
+                        <div class="col-md-6">
+                            <strong>Nextflow Version:</strong>
+                            <div>version ${workflow.nextflow.version}, build ${workflow.nextflow.build}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Execution Summary Section -->
+        <section class="mb-5" id="execution">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="mb-0">Execution Summary</h2>
+                </div>
+                <div class="card-body">
+                    <div class="col-md-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">Succeeded</h5>
+                                <p class="card-text">${workflow.stats.succeedCount}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">Cached</h5>
+                                <p class="card-text">${workflow.stats.cachedCount}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">Failed</h5>
+                                <p class="card-text">${workflow.stats.effectiveFailedCount}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">Ignored</h5>
+                                <p class="card-text">${workflow.stats.ignoredCount}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row mt-4">
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">CPU hours</h5>
+                            <p class="card-text">${workflow.stats.computeTimeFmt}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Start Time</h5>
+                            <p class="card-text">${workflow.start}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Completion Time</h5>
+                            <p class="card-text">${workflow.complete}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sample Tracking Section -->
+        <section class="mb-5" id="samples">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="mb-0">Sample Tracking</h2>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-4">Select a sample to view its resource usage and task execution details.</p>
+                    <div id="samples-grid"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Resource Analysis Section -->
+        <section class="mb-5" id="resources">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="mb-0">Resource Analysis for <span id="current-sample" class="text-muted">[No sample selected]</span></h2>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div id="cpu-chart" class="chart-container"></div>
+                        </div>
+                        <div class="col-md-12">
+                            <div id="memory-chart" class="chart-container"></div>
+                        </div>
+                        <div class="col-md-12">
+                            <div id="duration-chart" class="chart-container"></div>
+                        </div>
+                        <div class="col-md-12">
+                            <div id="disk-chart" class="chart-container"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Task Details Section -->
+        <section class="mb-5" id="tasks">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="mb-0">Task Details</h2>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-4">Comprehensive task information filtered by the selected sample.</p>
+                    <div id="tasks-grid"></div>
+                </div>
+            </div>
+        </section>
+    </main>
+</body>
+</html>
