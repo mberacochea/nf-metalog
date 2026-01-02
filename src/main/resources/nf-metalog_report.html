@@ -22,16 +22,14 @@
     <% } %>
 </head>
 <body>
-    <!-- Bootstrap Header -->
-    <header class="bg-light mb-4">
-        <div class="container py-4">
-            <h1 class="display-5 mb-2">Nextflow Workflow Report</h1>
-            <p class="lead text-muted">[${workflow.runName}]</p>
+    <header class="bg-white">
+        <div class="container">
+            <h1 class="display-5">nf-metalog report</h1>
+            <h6>[${workflow.runName}]</h6>
         </div>
     </header>
-    
     <!-- Navigation Bar with Anchor Links -->
-    <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom sticky-top">
+    <nav class="navbar navbar-expand-lg navbar-light bg-white sticky-top">
         <div class="container">
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -62,48 +60,56 @@
     </nav>
     
     <!-- Main Content Container -->
-    <main class="container mb-5" id="main-content">
+    <main class="container mb-2" id="main-content">
         
         <!-- Workflow Overview Section -->
-        <section class="mb-5" id="overview">
+        <section class="mb-2" id="overview">
             <div class="card">
                 <div class="card-header">
                     <h2 class="mb-0">Workflow Overview</h2>
                 </div>
                 <div class="card-body">
-                    <div class="col-md-3">
-                        <div class="card h-100">
-                            <div class="card-body">
-                                <h5 class="card-title">Status</h5>
-                                <p class="card-text">
-                                    <span class="badge bg-${workflow.success ? 'success' : 'danger'}">
-                                        ${workflow.success ? 'Completed' : 'Failed'}
-                                    </span>
-                                </p>
+                    <div class="row">
+                        <div class="col">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">
+                                        <span class="badge bg-${workflow.success ? 'success' : 'danger'}">${workflow.success ? 'Completed' : 'Failed'}</span>
+                                    </h5>
+                                    <p class="card-text">Status</p>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card h-100">
-                            <div class="card-body">
-                                <h5 class="card-title">Duration</h5>
-                                <p class="card-text">${workflow.duration}</p>
+                        <div class="col">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">${workflow.duration}</h5>
+                                    <p class="card-text">Duration</p>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card h-100">
-                            <div class="card-body">
-                                <h5 class="card-title">Samples Processed</h5>
-                                <p class="card-text" id="sample-count">0</p>
+                        <div class="col">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title" id="sample-count">-</h5>
+                                    <p class="card-text">Samples Processed</p>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card h-100">
-                            <div class="card-body">
-                                <h5 class="card-title">Total Tasks</h5>
-                                <p class="card-text" id="total-tasks">0</p>
+                        <div class="col">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title" id="total-tasks">-</h5>
+                                    <p class="card-text">Total Tasks</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">CPU hours</h5>
+                                    <p class="card-text">${workflow.stats.computeTimeFmt}</p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -112,7 +118,7 @@
         </section>
 
         <!-- Workflow Metadata Section -->
-        <section class="mb-5" id="metadata">
+        <section class="mb-2" id="metadata">
             <div class="card">
                 <div class="card-header">
                     <h2 class="mb-0">Workflow Metadata</h2>
@@ -126,6 +132,14 @@
                                     ${workflow.commandLine}
                                 </samp>
                             </div>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Start Time:</strong>
+                            <div class="text-muted">${workflow.start.format("YYYY-MM-dd HH:mm:ss")}</div>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Completion Time:</strong>
+                            <div class="text-muted">${workflow.complete.format("YYYY-MM-dd HH:mm:ss")}</div>
                         </div>
                         <div class="col-md-6">
                             <strong>Launch Directory:</strong>
@@ -152,22 +166,22 @@
                         </div>
                         <% } %>
                         <div class="col-md-6">
-                            <strong>Workflow Session:</strong>
+                            <strong>Session:</strong>
                             <div><code>${workflow.sessionId}</code></div>
                         </div>
                         <% if (workflow.repository) { %>
                         <div class="col-md-6">
-                            <strong>Workflow Repository:</strong>
+                            <strong>Repository:</strong>
                             <div><code>${workflow.repository}</code></div>
                         </div>
                         <% } %>
                         <div class="col-md-6">
-                            <strong>Workflow Profile:</strong>
+                            <strong>Profile(s):</strong>
                             <div>${workflow.profile}</div>
                         </div>
                         <% if (workflow.container) { %>
                         <div class="col-md-6">
-                            <strong>Workflow Container:</strong>
+                            <strong>Container:</strong>
                             <div class="text-muted">${workflow.container}</div>
                         </div>
                         <% } %>
@@ -181,68 +195,52 @@
         </section>
 
         <!-- Execution Summary Section -->
-        <section class="mb-5" id="execution">
+        <section class="mb-2" id="execution">
             <div class="card">
                 <div class="card-header">
                     <h2 class="mb-0">Execution Summary</h2>
                 </div>
                 <div class="card-body">
-                    <div class="col-md-3">
-                        <div class="card h-100">
-                            <div class="card-body">
-                                <h5 class="card-title">Succeeded</h5>
-                                <p class="card-text">${workflow.stats.succeedCount}</p>
+                    <div class="row">
+                        <div class="col">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">${workflow.stats.succeedCount}</h5>
+                                    <p class="card-text">
+                                        <span class="badge bg-success">Succeeded</span>
+                                    </p>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card h-100">
-                            <div class="card-body">
-                                <h5 class="card-title">Cached</h5>
-                                <p class="card-text">${workflow.stats.cachedCount}</p>
+                        <div class="col">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">${workflow.stats.cachedCount}</h5>
+                                    <p class="card-text">
+                                        <span class="badge bg-warning">Cached</span>
+                                    </p>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card h-100">
-                            <div class="card-body">
-                                <h5 class="card-title">Failed</h5>
-                                <p class="card-text">${workflow.stats.effectiveFailedCount}</p>
+                        <div class="col">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">${workflow.stats.effectiveFailedCount}</h5>
+                                    <p class="card-text">
+                                        <span class="badge bg-danger">Failed</span>
+                                    </p>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card h-100">
-                            <div class="card-body">
-                                <h5 class="card-title">Ignored</h5>
-                                <p class="card-text">${workflow.stats.ignoredCount}</p>
+                        <div class="col">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">${workflow.stats.ignoredCount}</h5>
+                                    <p class="card-text">
+                                        <span class="badge bg-warning">Ignored</span>
+                                    </p>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="row mt-4">
-                <div class="col-md-4">
-                    <div class="card">
-                        <div class="card-body">
-                            <h5 class="card-title">CPU hours</h5>
-                            <p class="card-text">${workflow.stats.computeTimeFmt}</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card">
-                        <div class="card-body">
-                            <h5 class="card-title">Start Time</h5>
-                            <p class="card-text">${workflow.start}</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card">
-                        <div class="card-body">
-                            <h5 class="card-title">Completion Time</h5>
-                            <p class="card-text">${workflow.complete}</p>
                         </div>
                     </div>
                 </div>
@@ -250,7 +248,7 @@
         </section>
 
         <!-- Sample Tracking Section -->
-        <section class="mb-5" id="samples">
+        <section class="mb-2" id="samples">
             <div class="card">
                 <div class="card-header">
                     <h2 class="mb-0">Sample Tracking</h2>
@@ -263,7 +261,7 @@
         </section>
 
         <!-- Resource Analysis Section -->
-        <section class="mb-5" id="resources">
+        <section class="mb-2" id="resources">
             <div class="card">
                 <div class="card-header">
                     <h2 class="mb-0">Resource Analysis for <span id="current-sample" class="text-muted">[No sample selected]</span></h2>
@@ -288,7 +286,7 @@
         </section>
 
         <!-- Task Details Section -->
-        <section class="mb-5" id="tasks">
+        <section class="mb-2" id="tasks">
             <div class="card">
                 <div class="card-header">
                     <h2 class="mb-0">Task Details</h2>

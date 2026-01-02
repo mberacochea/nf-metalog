@@ -166,7 +166,7 @@ function countTasksByStatus(data, sample) {
     const counts = { completed: 0, cached: 0, failed: 0, unknown: 0 };
 
     sampleTasks.forEach(task => {
-        const status = task.status || 'unknown';
+        const status = (task.status || 'unknown').toLowerCase();
         if (counts.hasOwnProperty(status)) {
             counts[status]++;
         } else {
@@ -180,7 +180,7 @@ function countTasksByStatus(data, sample) {
 // Update overview statistics
 function updateOverviewStats() {
     const samples = getUniqueSamples(window.nfMetalogData);
-    const totalTasks = window.nfMetalogData;
+    const totalTasks = window.nfMetalogData.length;
 
     console.log('Data statistics:', {
         totalTasks: totalTasks,
@@ -265,7 +265,6 @@ function initializeTables() {
     samplesGrid.on('rowClick', (event, row) => {
         // Extract sample ID from the first cell
         const sampleId = row.cells[0].data;
-        console.log('Sample selected via GridJS event:', sampleId);
 
         // Remove selection from all rows first
         document.querySelectorAll('.gridjs-tr.selected-row').forEach(row => {
@@ -335,13 +334,9 @@ function updateTasksTable(sampleFilter = null) {
     }
 
     if (!filteredData || filteredData.length === 0) {
-        console.log('No tasks found for filter:', sampleFilter);
         // TODO: Show empty state in table
         return;
     }
-
-    // Get the first element to get the columns
-    const columns = Object.keys(filteredData[0])
 
     if (tasksGrid) {
         tasksGrid.updateConfig({
@@ -349,25 +344,16 @@ function updateTasksTable(sampleFilter = null) {
         }).forceRender();
     } else {
         tasksGrid = new gridjs.Grid({
-            columns: columns,
-            data: filteredData,
+            columns: Object.keys(filteredData[0]),
             search: true,
             sort: true,
+            fixedHeader: true,
             pagination: {
                 enabled: true,
                 limit: 20
             },
-            style: {
-                table: {
-                    'width': '100%'
-                },
-                th: {
-                    'background-color': '#f8f9fa',
-                    'font-weight': '600'
-                }
-            }
+            data: filteredData
         });
-
         tasksGrid.render(document.getElementById('tasks-grid'));
     }
 }

@@ -65,6 +65,7 @@ class SqliteDatabaseService implements DatabaseService {
     SqliteDatabaseService(Path dbFile) {
         this.dbFile = dbFile
         this.eventQueue = new LinkedBlockingQueue<TaskEvent>()
+        // TODO: maybe we should use a lock instead?
         this.workerThread = createWorkerThread()
     }
 

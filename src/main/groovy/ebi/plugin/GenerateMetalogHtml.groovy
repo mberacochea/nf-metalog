@@ -16,15 +16,15 @@
 
 package ebi.plugin
 
+import groovy.util.logging.Slf4j
 import groovy.json.JsonBuilder
 import groovy.text.GStringTemplateEngine
 import nextflow.script.WorkflowMetadata
 
 import java.nio.file.Files
 import java.nio.file.Paths
-import java.io.StringWriter
-import java.io.FileNotFoundException
 
+@Slf4j
 class GenerateMetalogHtml {
 
     static void generate(DatabaseService databaseService, WorkflowMetadata workflow) {
@@ -58,10 +58,9 @@ class GenerateMetalogHtml {
             // TODO: the html needs to be parameter too
             Files.write(Paths.get("metalog.html"), template.toString().getBytes())
 
-            println "Successfully generated metalog.html"
+            log.info("Successfully generated metalog.html")
         } catch (Exception e) {
-            println "Error generating and writing the nf-metalog report: ${e.message}"
-            e.printStackTrace()
+            log.error("Error generating and writing the nf-metalog report", e)
         }
     }
 
@@ -101,6 +100,10 @@ class GenerateMetalogHtml {
      */
     static void writeCsv(List<Map<String, Object>> data, String csvFile) {
         def csv = new StringBuilder()
+        if (data.size() == 0) {
+            log.info("No data to write in the metalog CSV file")
+            return
+        }
         // TODO: there has to be a CSV write in Groovy
         // Write headers
         def headers = data[0].keySet()
