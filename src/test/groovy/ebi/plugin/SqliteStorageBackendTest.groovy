@@ -11,20 +11,21 @@ import java.nio.file.Path
 import java.sql.ResultSet
 
 import ebi.plugin.TestDatabaseUtils
+import ebi.plugin.storage.SqliteStorageBackend
 
 /**
- * Tests for SqliteDatabaseService focusing on queue handling,
+ * Tests for SqliteStorageBackend focusing on queue handling,
  * concurrency, load testing, and database operations.
  */
-class SqliteDatabaseServiceTest extends Specification {
+class SqliteStorageBackendTest extends Specification {
 
     @TempDir
     Path tempDir
 
-    def 'should initialize database and create table'() {
+    def 'should initialize storage backend and create table'() {
         given:
         def dbFile = tempDir.resolve('test.db')
-        def service = new SqliteDatabaseService(dbFile)
+        def service = new SqliteStorageBackend(dbFile)
 
         when:
         service.initialize()
@@ -49,7 +50,7 @@ class SqliteDatabaseServiceTest extends Specification {
     def 'should insert task event into database'() {
         given:
         def dbFile = tempDir.resolve('test.db')
-        def service = new SqliteDatabaseService(dbFile)
+        def service = new SqliteStorageBackend(dbFile)
         service.initialize()
 
         and:
@@ -107,7 +108,7 @@ class SqliteDatabaseServiceTest extends Specification {
     def 'should update existing task event (upsert behavior)'() {
         given:
         def dbFile = tempDir.resolve('test.db')
-        def service = new SqliteDatabaseService(dbFile)
+        def service = new SqliteStorageBackend(dbFile)
         service.initialize()
 
         and:
@@ -160,7 +161,7 @@ class SqliteDatabaseServiceTest extends Specification {
     def 'should handle concurrent task events from multiple threads'() {
         given:
         def dbFile = tempDir.resolve('test.db')
-        def service = new SqliteDatabaseService(dbFile)
+        def service = new SqliteStorageBackend(dbFile)
         service.initialize()
 
         and: 'setup for concurrent execution'
@@ -200,7 +201,7 @@ class SqliteDatabaseServiceTest extends Specification {
     def 'should handle load test with many events in quick succession'() {
         given:
         def dbFile = tempDir.resolve('test.db')
-        def service = new SqliteDatabaseService(dbFile)
+        def service = new SqliteStorageBackend(dbFile)
         service.initialize()
 
         and:
@@ -231,7 +232,7 @@ class SqliteDatabaseServiceTest extends Specification {
     def 'should handle graceful shutdown with events still in queue'() {
         given:
         def dbFile = tempDir.resolve('test.db')
-        def service = new SqliteDatabaseService(dbFile)
+        def service = new SqliteStorageBackend(dbFile)
         service.initialize()
 
         and:
@@ -258,7 +259,7 @@ class SqliteDatabaseServiceTest extends Specification {
     def 'should store JSON metadata with trace fields'() {
         given:
         def dbFile = tempDir.resolve('test.db')
-        def service = new SqliteDatabaseService(dbFile)
+        def service = new SqliteStorageBackend(dbFile)
         service.initialize()
 
         and:
@@ -301,7 +302,7 @@ class SqliteDatabaseServiceTest extends Specification {
     def 'should handle mixed insert and update operations under load'() {
         given:
         def dbFile = tempDir.resolve('test.db')
-        def service = new SqliteDatabaseService(dbFile)
+        def service = new SqliteStorageBackend(dbFile)
         service.initialize()
 
         and:

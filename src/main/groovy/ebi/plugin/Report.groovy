@@ -18,31 +18,40 @@ package ebi.plugin
 
 import groovy.util.logging.Slf4j
 import groovy.json.JsonBuilder
+import ebi.plugin.storage.StorageBackend
 import groovy.text.GStringTemplateEngine
+import nextflow.exception.AbortOperationException
+import nextflow.file.FileHelper
 import nextflow.script.WorkflowMetadata
 
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.Paths
 
 @Slf4j
-class GenerateMetalogHtml {
+class Report {
 
-    static void generate(DatabaseService databaseService, WorkflowMetadata workflow) {
+    static void generate(StorageBackend storageBackend, WorkflowMetadata workflow, MetalogConfig.ReportConfig reportConfig) {
         try {
-            def csvData = databaseService.fetchAllData(workflow.runName)
+            def csvData = storageBackend.fetchAllData(workflow.runName)
 
-            // TODO: the csv file needs to be a parameter
-            writeCsv(csvData, "metalog.csv")
+            // Check if files already exist and handle override logic
+            checkFileOverwrite(FileHelper.toPath(reportConfig.csvFile), reportConfig.overwrite)
+            checkFileOverwrite(FileHelper.toPath(reportConfig.htmlFile), reportConfig.overwrite)
+
+            // Use configuration parameters for file names
+            writeCsv(csvData, reportConfig.csvFile)
 
             def templateString = readAsset("nf-metalog_report.html")
             def jsAssets = []
-            def cssAssets = []
-            jsAssets.add(readAsset("assets/plotly-latest.min.js"))
-            jsAssets.add(readAsset("assets/gridjs.umd.js"))
             jsAssets.add(readAsset("assets/bootstrap.bundle.min.js"))
+            jsAssets.add(readAsset("assets/datatables.min.js"))
             jsAssets.add(readAsset("assets/nf-metalog_report.js"))
+            jsAssets.add(readAsset("assets/plotly-basic-3.3.1.min.js"))
+
+            def cssAssets = []
             cssAssets.add(readAsset("assets/bootstrap.min.css"))
-            cssAssets.add(readAsset("assets/gridjs-mermaid.min.css"))
+            cssAssets.add(readAsset("assets/datatables.min.css"))
             cssAssets.add(readAsset("assets/nf-metalog_report.css"))
 
             def binding = [
@@ -55,10 +64,10 @@ class GenerateMetalogHtml {
             def engine = new GStringTemplateEngine()
             def template = engine.createTemplate(templateString).make(binding)
 
-            // TODO: the html needs to be parameter too
-            Files.write(Paths.get("metalog.html"), template.toString().getBytes())
+            // Use configuration parameter for HTML file name
+            Files.write(Paths.get(reportConfig.htmlFile), template.toString().getBytes())
 
-            log.info("Successfully generated metalog.html")
+            log.info("Successfully generated ${reportConfig.htmlFile}")
         } catch (Exception e) {
             log.error("Error generating and writing the nf-metalog report", e)
         }
@@ -74,7 +83,7 @@ class GenerateMetalogHtml {
         final writer = new StringWriter()
         // Ensure path starts with "/" for proper resource loading
         String resourcePath = path.startsWith("/") ? path : "/${path}"
-        final res = GenerateMetalogHtml.class.getResourceAsStream(resourcePath)
+        final res = Report.class.getResourceAsStream(resourcePath)
         
         if (res == null) {
             throw new FileNotFoundException("Resource not found: ${resourcePath}")
@@ -118,5 +127,22 @@ class GenerateMetalogHtml {
         }
 
         Files.write(Paths.get(csvFile), csv.toString().getBytes())
+    }
+
+    /**
+     * Check whether a file already exists and throw an
+     * error if it cannot be overwritten.
+     *
+     * @param path
+     * @param overwrite
+     */
+    static void checkFileOverwrite(Path path, boolean overwrite) {
+        final attrs = FileHelper.readAttributes(path)
+        if( attrs ) {
+            if( overwrite && (attrs.isDirectory() || !path.delete()) )
+                throw new AbortOperationException("Unable to overwrite existing provenance file: ${path.toUriString()}")
+            else if( !overwrite )
+                throw new AbortOperationException("Provenance file already exists: ${path.toUriString()}")
+        }
     }
 }

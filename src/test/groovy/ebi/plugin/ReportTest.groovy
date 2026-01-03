@@ -2,7 +2,7 @@ package ebi.plugin
 
 import spock.lang.Specification
 
-class GenerateMetalogHtmlTest extends Specification {
+class ReportTest extends Specification {
 
     def "test asset reading functionality"() {
         when:
@@ -10,10 +10,10 @@ class GenerateMetalogHtmlTest extends Specification {
         def cssAssets = []
 
         // Test reading JavaScript assets
-        jsAssets.add(GenerateMetalogHtml.readAsset("assets/nf-metalog_report.js"))
+        jsAssets.add(Report.readAsset("assets/nf-metalog_report.js"))
         
         // Test reading CSS assets  
-        cssAssets.add(GenerateMetalogHtml.readAsset("assets/nf-metalog_report.css"))
+        cssAssets.add(Report.readAsset("assets/nf-metalog_report.css"))
 
         then:
         // Verify we can read the assets
@@ -33,7 +33,7 @@ class GenerateMetalogHtmlTest extends Specification {
 
     def "test template reading"() {
         when:
-        def template = GenerateMetalogHtml.readAsset("nf-metalog_report.html")
+        def template = Report.readAsset("nf-metalog_report.html")
 
         then:
         template != null

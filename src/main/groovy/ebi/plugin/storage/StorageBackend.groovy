@@ -14,18 +14,18 @@
  * limitations under the License.
  */
 
-package ebi.plugin
+package ebi.plugin.storage
 
 import groovy.transform.CompileStatic
 import nextflow.processor.TaskHandler
 import nextflow.trace.TraceRecord
 
 /**
- * Interface for database operations in the Metalog plugin.
- * Implementations should provide concrete database access for different database types.
+ * Interface for storage operations in the Metalog plugin.
+ * Implementations should provide concrete storage backends for different storage types.
  */
 @CompileStatic
-interface DatabaseService {
+interface StorageBackend {
 
     /**
      * Initialize the database connection and schema
@@ -60,4 +60,10 @@ interface DatabaseService {
      * @throws Exception if fetching data fails
      */
     List<Map<String, Object>> fetchAllData(String runName)
+
+    /**
+     * Check if the storage backend has been closed
+     * @return true if the storage backend is closed, false otherwise
+     */
+    boolean isClosed()
 }

@@ -1,7 +1,7 @@
 /**
  * nf-metalog Report Template
  *
- * Heavily inspired by Nextflow's reports but adapted for per-sample focus.
+ * **Heavily** inspired by Nextflow's reports but adapted for per-sample focus.
  * From of the code was taken from
  *
  * @version 1.0
@@ -14,8 +14,8 @@
 
 // Global variables
 let currentSample = null;
-let samplesGrid = null;
-let tasksGrid = null;
+let samplesTable = null;
+let tasksTable = null;
 
 /**
  * Normalize memory values to appropriate units (bytes -> KB/MB/GB)
@@ -44,9 +44,15 @@ function norm_mem(list) {
 /**
  * Format memory values in human-readable units
  * @param {number} bytes - Memory value in bytes
+ * @param {string} type - Type of formatting ('display' or 'sort')
+ * @param {object} row - Optional row data for additional context
  * @returns {string} - Formatted memory string (e.g., "1.25 GB")
  */
-function formatMemory(bytes) {
+function formatMemory(bytes, type = 'display', row = null) {
+    if (type === 'sort') {
+        return bytes;
+    }
+    
     if (bytes == '-' || bytes == 0 || bytes == null) {
         return bytes;
     }
@@ -70,9 +76,10 @@ function formatMemory(bytes) {
  * Format duration values in human-readable format
  * @param {number} ms - Duration in milliseconds
  * @param {string} type - Type of formatting ('display' or 'sort')
+ * @param {object} row - Optional row data for additional context
  * @returns {string|number} - Formatted duration string or raw value for sorting
  */
-function formatDuration(ms, type = 'display') {
+function formatDuration(ms, type = 'display', row = null) {
     if (type === 'sort') {
         return parseInt(ms);
     }
@@ -107,9 +114,15 @@ function formatDuration(ms, type = 'display') {
 /**
  * Format date timestamps in human-readable format
  * @param {number} timestamp - Unix timestamp in milliseconds
+ * @param {string} type - Type of formatting ('display' or 'sort')
+ * @param {object} row - Optional row data for additional context
  * @returns {string} - Formatted date string
  */
-function formatDate(timestamp) {
+function formatDate(timestamp, type = 'display', row = null) {
+    if (type === 'sort') {
+        return timestamp;
+    }
+    
     if (timestamp == '-' || timestamp == 0 || timestamp == null) {
         return timestamp;
     }
@@ -191,8 +204,12 @@ function updateOverviewStats() {
     document.getElementById('total-tasks').textContent = totalTasks;
 }
 
+// ============================================
+// TABLE INITIALIZATION
+// ============================================
+
 /**
- * Initialize GridJS tables for samples and tasks
+ * Initialize DataTables for samples and tasks
  * Sets up interactive tables with pagination and sample selection
  *
  * @function initializeTables
@@ -208,12 +225,12 @@ function initializeTables() {
     // Samples table with click-to-select
     const samplesData = samples.map(sample => {
         const counts = countTasksByStatus(window.nfMetalogData, sample);
-        return [
-            sample,
-            counts.completed + counts.cached + counts.failed,
-            counts.completed,
-            counts.failed
-        ];
+        return {
+            sample_id: sample,
+            total_tasks: counts.completed + counts.cached + counts.failed,
+            completed: counts.completed,
+            failed: counts.failed
+        };
     });
 
     // Handle empty samples case
@@ -222,18 +239,17 @@ function initializeTables() {
         
         // Show a message instead of empty table
         const samplesGridContainer = document.getElementById('samples-grid');
-        samplesGridContainer.innerHTML = `
-            <div class="alert alert-info">
-                <strong>No samples found</strong>
-                <p class="mb-0">The workflow data doesn't contain any sample information (group_id field).</p>
-                <p class="mb-0 small text-muted">This could be because:</p>
-                <ul class="small text-muted mb-0">
-                    <li>No tasks have been executed yet</li>
-                    <li>The workflow doesn't use sample grouping</li>
-                    <li>Data loading issue - check browser console for details</li>
-                </ul>
-            </div>
-        `;
+        samplesGridContainer.innerHTML = 
+            '<div class="alert alert-info">' +
+                '<strong>No samples found</strong>' +
+                '<p class="mb-0">The workflow data doesn\'t contain any sample information (group_id field).</p>' +
+                '<p class="mb-0 small text-muted">This could be because:</p>' +
+                '<ul class="small text-muted mb-0">' +
+                    '<li>No tasks have been executed yet</li>' +
+                    '<li>The workflow doesn\'t use sample grouping</li>' +
+                    '<li>Data loading issue - check browser console for details</li>' +
+                '</ul>' +
+            '</div>';
         
         // Also update the overview to show 0 samples
         document.getElementById('sample-count').textContent = '0';
@@ -241,68 +257,50 @@ function initializeTables() {
         return; // Exit early since there are no samples to display
     }
 
-    samplesGrid = new gridjs.Grid({
-        columns: ["Sample ID", "Total Tasks", "Completed", "Failed"],
+    // Initialize DataTables for samples
+    samplesTable = $('#samples-grid').DataTable({
         data: samplesData,
-        search: true,
-        sort: true,
-        pagination: {
-            enabled: true,
-            limit: 10
-        },
-        style: {
-            table: {
-                'white-space': 'nowrap'
-            },
-            th: {
-                'background-color': '#f8f9fa',
-                'font-weight': '600'
-            }
+        columns: [
+            { title: "Sample ID", data: "sample_id" },
+            { title: "Total Tasks", data: "total_tasks" },
+            { title: "Completed", data: "completed" },
+            { title: "Failed", data: "failed" }
+        ],
+        pageLength: 10,
+        dom: 'lrtip', // Show length menu, search, table, info, pagination
+        order: [[0, 'asc']],
+        responsive: true,
+        autoWidth: false,
+        language: {
+            search: "Search samples:",
+            lengthMenu: "Show _MENU_ samples per page"
         }
     });
 
-    // Use GridJS built-in events instead of manual event listeners
-    samplesGrid.on('rowClick', (event, row) => {
-        // Extract sample ID from the first cell
-        const sampleId = row.cells[0].data;
-
-        // Remove selection from all rows first
-        document.querySelectorAll('.gridjs-tr.selected-row').forEach(row => {
-            row.classList.remove('selected-row');
-        });
-
-        // Add selection to clicked row (we need to find the DOM element)
-        const rowElement = event.target.closest('.gridjs-tr');
-        if (rowElement) {
-            rowElement.classList.add('selected-row');
+    // Handle row selection using DataTables API
+    $('#samples-grid').on('click', 'tbody tr', function(e) {
+        const row = samplesTable.row(this);
+        const rowNode = this;
+        
+        if ($(rowNode).hasClass('selected')) {
+            $(rowNode).removeClass('selected');
+        } else {
+            // Remove selection from all other rows
+            samplesTable.rows('.selected').nodes().each(function(node) {
+                $(node).removeClass('selected');
+            });
+            
+            // Add selection to current row
+            $(rowNode).addClass('selected');
+            
+            // Select the sample
+            const sampleId = row.data().sample_id;
+            selectSample(sampleId);
         }
-        // Select the sample (this will handle charts and tasks)
-        selectSample(sampleId);
     });
-
-    samplesGrid.render(document.getElementById('samples-grid'));
 
     // Initialize tasks table (empty at first)
     updateTasksTable();
-}
-
-// Reapply selection highlighting after pagination or other DOM changes
-function reapplySelectionHighlight() {
-    if (currentSample) {
-        // Remove selection from all rows first
-        document.querySelectorAll('.gridjs-tr.selected-row').forEach(row => {
-            row.classList.remove('selected-row');
-        });
-
-        // Find and highlight the selected row if it's visible
-        const allRows = document.querySelectorAll('.gridjs-tr:not(.gridjs-header)');
-        allRows.forEach(row => {
-            const rowSample = row.querySelector('.gridjs-td:nth-child(1)')?.textContent;
-            if (rowSample === currentSample) {
-                row.classList.add('selected-row');
-            }
-        });
-    }
 }
 
 // Select sample and update views
@@ -313,9 +311,6 @@ function selectSample(sampleId) {
     // Update charts and tasks table
     createCharts(sampleId);
     updateTasksTable(sampleId);
-
-    // Reapply selection highlighting in case of pagination
-    reapplySelectionHighlight();
 }
 
 /**
@@ -334,29 +329,116 @@ function updateTasksTable(sampleFilter = null) {
     }
 
     if (!filteredData || filteredData.length === 0) {
-        // TODO: Show empty state in table
+        // Show empty state in table
+        const tasksGridContainer = document.getElementById('tasks-grid');
+        tasksGridContainer.innerHTML = 
+            '<div class="alert alert-info">' +
+                '<strong>No tasks found</strong>' +
+                '<p class="mb-0">No task data available for the selected sample.</p>' +
+            '</div>';
         return;
     }
 
-    if (tasksGrid) {
-        tasksGrid.updateConfig({
-            data: filteredData
-        }).forceRender();
-    } else {
-        tasksGrid = new gridjs.Grid({
-            columns: Object.keys(filteredData[0]),
-            search: true,
-            sort: true,
-            fixedHeader: true,
-            pagination: {
-                enabled: true,
-                limit: 20
-            },
-            data: filteredData
-        });
-        tasksGrid.render(document.getElementById('tasks-grid'));
+    // Destroy existing DataTable if it exists
+    if (tasksTable) {
+        tasksTable.destroy();
+        $('#tasks-grid').empty();
     }
+
+    // Create new DataTable
+    tasksTable = $('#tasks-grid').DataTable({
+        data: filteredData,
+        columns: [
+            { title: 'name', data: 'process_name' },
+            { title: 'status', data: 'status', render: function(data, type, row) {
+                if (type === 'display') {
+                    const status = (data || '').toLowerCase();
+                    let badgeClass = 'secondary';
+                    if (status === 'completed') badgeClass = 'success';
+                    else if (status === 'failed') badgeClass = 'danger';
+                    else if (status === 'cached') badgeClass = 'warning';
+                    return "<span class=\"badge bg-" + badgeClass + "\">" + status + "</span>";
+                }
+                return data;
+            }},
+            { title: 'sample', data: 'group_id' },
+            { title: 'exit', data: 'exit' },
+            { title: 'submit', data: 'submit', render: formatDate },
+            { title: 'start', data: 'start', render: formatDate },
+            { title: 'complete', data: 'complete', render: formatDate },
+            { title: 'duration', data: 'duration', render: formatDuration },
+            { title: '%cpu', data: '%cpu' },
+            { title: '%mem', data: '%mem' },
+            { title: 'memory', data: 'memory', render: function(data, type, row) {
+                return formatMemory(data * 1024 * 1024, type, row); // Convert MB to bytes
+            }},
+            { title: 'peak_rss', data: 'peak_rss', render: formatMemory },
+            { title: 'peak_vmem', data: 'peak_vmem', render: formatMemory },
+            { title: 'rchar', data: 'rchar', render: formatMemory },
+            { title: 'wchar', data: 'wchar', render: formatMemory },
+            { title: 'syscr', data: 'syscr', render: formatMemory },
+            { title: 'syscw', data: 'syscw', render: formatMemory },
+            { title: 'read_bytes', data: 'read_bytes', render: formatMemory },
+            { title: 'write_bytes', data: 'write_bytes', render: formatMemory },
+            { title: 'hash', data: 'hash', render:  function(data, type, row) {
+                if (type === 'display' && data) {
+                    return data.substring(0, 8) + '...';
+                }
+                return data;
+            }},
+            { title: 'script', data: 'script', render: function(data) {
+                return '<pre class="script_block short"><code>' + data.trim() + '</code></pre>';
+            }},
+            { title: 'container', data: 'container', render: function(data) {
+                return '<samp>' + data + '</samp>';
+            }},
+            { title: 'disk', data: 'disk', render: function(data) {
+                if (data == null) {
+                    return "-"
+                }
+                return data
+            }},
+            { title: 'attempt', data: 'attempt' },
+            { title: 'scratch', data: 'scratch', render: function(data) {
+                return '<samp>' + data + '</samp>';
+            }},
+            { title: 'workdir', data: 'workdir', render: function(data) {
+                return '<samp>' + data + '</samp>';
+            }}
+        ],
+        pageLength: 20,
+        dom: 'lrtip',
+        scrollX: true, // Handle wide tables
+        scrollCollapse: true,
+        deferRender: true,
+        responsive: true,
+        autoWidth: false,
+        language: {
+            search: "Search tasks:",
+            lengthMenu: "Show _MENU_ tasks per page"
+        },
+         columnDefs: [
+          { className: "id", "targets": [ 0,1,2,3 ] },
+          { className: "metrics", "targets": [ 4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25 ] }
+        ],
+        buttons: [
+          {
+            extend: 'colvisGroup',
+            text: 'Metrics',
+            show: [ '.id, .metrics' ],
+          },
+          {
+            extend: 'colvisGroup',
+            text: 'All',
+            show: ':hidden',
+          },
+        ]
+    });
 }
+
+// ============================================
+// CHART GENERATION
+// ============================================
 
 /**
  * Create resource usage charts for selected sample
@@ -393,24 +475,23 @@ function createCharts(sample) {
     // Helper function to filter out zero/empty values and create chart data
     function createChartData(tasks, valueKey, title, yAxisTitle, color) {
         if (!tasks || !Array.isArray(tasks) || tasks.length === 0) {
-            console.warn(`createChartData: No valid tasks data for \${valueKey}`);
+            console.warn("createChartData: No valid tasks data for " + valueKey);
             return { hasData: false };
         }
 
         const nonZeroTasks = tasks.filter(task => task && task[valueKey] && task[valueKey] > 0);
 
         if (nonZeroTasks.length === 0) {
-            console.log(`createChartData: No non-zero data for \${valueKey}`);
+            console.log("createChartData: No non-zero data for " + valueKey);
             return { hasData: false };
         }
 
         // Create enhanced tooltips with task details
         const hoverText = nonZeroTasks.map(task => {
-            return `
-                <b>\${task.name}</b><br>
-                Status: \${task.status || 'N/A'}<br>
-                Sample: \${task.group_id || 'N/A'}
-                `;
+            return 
+                '<b>' + task.name + '</b><br>' +
+                'Status: ' + (task.status || 'N/A') + '<br>' +
+                'Sample: ' + (task.group_id || 'N/A');
         });
 
         return {
@@ -504,8 +585,12 @@ function createCharts(sample) {
     }
 }
 
+// ============================================
+// INITIALIZATION
+// ============================================
+
 // Initialize when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
+$(document).ready(function() {
     console.log('nf-metalog report initialized', {
         samples: window.nfMetalogData ? getUniqueSamples(window.nfMetalogData).length : 0,
         totalTasks: window.nfMetalogData ? window.nfMetalogData.length : 0
@@ -513,22 +598,4 @@ document.addEventListener('DOMContentLoaded', function() {
 
     initializeTables();
     updateOverviewStats();
-
-    // Set up mutation observer to handle pagination changes
-    // TODO: this needs to be done with gridjs API
-    const samplesGridContainer = document.getElementById('samples-grid');
-    const observer = new MutationObserver(function(mutations) {
-        mutations.forEach(function(mutation) {
-            if (mutation.addedNodes.length > 0) {
-                // DOM has changed (likely due to pagination)
-                reapplySelectionHighlight();
-            }
-        });
-    });
-
-    // Start observing the grid container for changes
-    observer.observe(samplesGridContainer, {
-        childList: true,
-        subtree: true
-    });
 });

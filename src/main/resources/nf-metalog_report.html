@@ -22,15 +22,12 @@
     <% } %>
 </head>
 <body>
-    <header class="bg-white">
-        <div class="container">
-            <h1 class="display-5">nf-metalog report</h1>
-            <h6>[${workflow.runName}]</h6>
-        </div>
-    </header>
     <!-- Navigation Bar with Anchor Links -->
-    <nav class="navbar navbar-expand-lg navbar-light bg-white sticky-top">
-        <div class="container">
+    <nav class="navbar navbar-expand-lg bg-body-tertiary">
+        <div class="container-fluid">
+            <a href="https://github.com/mberacochea/nf-metalog" class="navbar-brand">
+                nf-metalog
+            </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -61,7 +58,10 @@
     
     <!-- Main Content Container -->
     <main class="container mb-2" id="main-content">
-        
+
+        <h1 class="display-3">nf-metalog report</h1>
+        <h3 class="text-muted mb-4">[${workflow.runName}]</h3>
+
         <!-- Workflow Overview Section -->
         <section class="mb-2" id="overview">
             <div class="card">
@@ -128,9 +128,9 @@
                         <div class="col-md-12">
                             <strong>Nextflow Command:</strong>
                             <div class="bg-light p-2 rounded mt-1">
-                                <samp>
+                                <code>
                                     ${workflow.commandLine}
-                                </samp>
+                                </code>
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -255,7 +255,7 @@
                 </div>
                 <div class="card-body">
                     <p class="text-muted mb-4">Select a sample to view its resource usage and task execution details.</p>
-                    <div id="samples-grid"></div>
+                    <table id="samples-grid"></table>
                 </div>
             </div>
         </section>
@@ -293,7 +293,7 @@
                 </div>
                 <div class="card-body">
                     <p class="text-muted mb-4">Comprehensive task information filtered by the selected sample.</p>
-                    <div id="tasks-grid"></div>
+                    <table id="tasks-grid"></table>
                 </div>
             </div>
         </section>

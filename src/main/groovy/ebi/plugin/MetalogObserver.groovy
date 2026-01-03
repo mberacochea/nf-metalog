@@ -20,6 +20,9 @@ import java.nio.file.Path
 
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
+import ebi.plugin.storage.StorageBackend
+import ebi.plugin.storage.SqliteStorageBackend
+import ebi.plugin.storage.MemoryStorageBackend
 
 import nextflow.Session
 import nextflow.trace.TraceObserverV2
@@ -33,7 +36,8 @@ class MetalogObserver implements TraceObserverV2 {
     private final Session session
     private final String groupByKey
     private final String runName
-    private final DatabaseService databaseService
+    private final StorageBackend storageBackend
+    private final MetalogConfig.ReportConfig reportConfig
 
     MetalogObserver(Session session, MetalogConfig config) {
         this.session = session
@@ -41,15 +45,23 @@ class MetalogObserver implements TraceObserverV2 {
 
         // For now, hardcode groupBy to 'id' (from meta.id)
         this.groupByKey = config.groupKey
+        this.reportConfig = config.report
 
-        // Initialize database service with SQLite
-        final dbFileName = config.sqlite?.file ?: 'metalog.db'
-        final dbFile = (session.workDir as Path).resolve(dbFileName)
-        this.databaseService = new SqliteDatabaseService(dbFile)
+        // Initialize database service based on configuration
+        final String storageBackend = config.storageBackend ?: 'sqlite'
+        
+        if (storageBackend == 'memory') {
+            this.storageBackend = new MemoryStorageBackend()
+            log.info "Metalog observer initialized with memory backend: runName={}, groupBy={}", this.runName, this.groupByKey
+        } else {
+            // Default to SQLite
+            final dbFileName = config.sqlite?.file ?: 'metalog.db'
+            final dbFile = (session.workDir as Path).resolve(dbFileName)
+            this.storageBackend = new SqliteStorageBackend(dbFile)
+            log.info "Metalog observer initialized with SQLite backend: runName={}, groupBy={}, dbFile={}", this.runName, this.groupByKey, dbFileName
+        }
 
-        this.databaseService.initialize()
-
-        log.info "Metalog observer initialized: runName={}, groupBy={}, dbFile={}", this.runName, this.groupByKey, dbFileName
+        this.storageBackend.initialize()
     }
 
     @Override
@@ -89,7 +101,7 @@ class MetalogObserver implements TraceObserverV2 {
                 return
             }
 
-            databaseService.insertOrUpdateTaskEvent(runName, groupId, event.handler, event.trace)
+            storageBackend.insertOrUpdateTaskEvent(runName, groupId, event.handler, event.trace)
             log.debug("Row inserted to database for task {} with id={}", event?.handler?.task?.name ?: "unknown", groupId)
 
         } catch (Exception e) {
@@ -101,13 +113,13 @@ class MetalogObserver implements TraceObserverV2 {
     void onFlowComplete() {
         log.info 'Metalog: closing the db connection.'
         try {
-            if (databaseService == null) {
-                log.error "The databaseService is null, that really shouldn't be happening."
+            if (storageBackend == null) {
+                log.error "The storageBackend is null, that really shouldn't be happening."
             } else {
-                // Generate the HTML report before closing the database
+                // Generate the HTML report before closing the storage backend
                 log.info 'Metalog: generating HTML report.'
-                GenerateMetalogHtml.generate(databaseService, session.getWorkflowMetadata())
-                databaseService.close()
+                Report.generate(storageBackend, session.getWorkflowMetadata(), reportConfig)
+                storageBackend.close()
             }
 
         } catch (Exception e) {

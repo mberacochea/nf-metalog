@@ -1,7 +1,6 @@
 package ebi.plugin
 
 import spock.lang.Specification
-import java.io.FileNotFoundException
 
 class ResourceLoadingTest extends Specification {
 
@@ -17,7 +16,7 @@ class ResourceLoadingTest extends Specification {
         
         def results = testCases.collect { testCase ->
             try {
-                def content = GenerateMetalogHtml.readAsset(testCase.path)
+                def content = Report.readAsset(testCase.path)
                 [path: testCase.path, success: true, contentSize: content?.size()]
             } catch (FileNotFoundException e) {
                 [path: testCase.path, success: false, error: e.message]
@@ -54,18 +53,18 @@ class ResourceLoadingTest extends Specification {
         when:
         def requiredAssets = [
             "nf-metalog_report.html",
-            "assets/plotly-latest.min.js",
-            "assets/gridjs.umd.js",
+            "assets/plotly-basic-3.3.1.min.js",
             "assets/bootstrap.bundle.min.js",
             "assets/nf-metalog_report.js",
             "assets/bootstrap.min.css",
-            "assets/gridjs-mermaid.min.css",
+            "assets/datatables.min.js",
+            "assets/datatables.min.css",
             "assets/nf-metalog_report.css"
         ]
         
         def loadedAssets = requiredAssets.collect { assetPath ->
             try {
-                def content = GenerateMetalogHtml.readAsset(assetPath)
+                def content = Report.readAsset(assetPath)
                 [path: assetPath, loaded: true, size: content.size()]
             } catch (Exception e) {
                 [path: assetPath, loaded: false, error: e.message]

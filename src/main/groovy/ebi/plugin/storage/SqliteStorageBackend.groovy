@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
-package ebi.plugin
+package ebi.plugin.storage
 
 import javax.xml.crypto.dsig.TransformService
 import java.nio.file.Path
+import java.sql.SQLException
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.PreparedStatement
@@ -40,7 +41,7 @@ import nextflow.trace.TraceRecord
  */
 @Slf4j
 @CompileStatic
-class SqliteDatabaseService implements DatabaseService {
+class SqliteStorageBackend implements StorageBackend {
 
     private static class TaskEvent {
         final String runName
@@ -62,7 +63,7 @@ class SqliteDatabaseService implements DatabaseService {
     private final Thread workerThread
     private volatile boolean shutdown = false
 
-    SqliteDatabaseService(Path dbFile) {
+    SqliteStorageBackend(Path dbFile) {
         this.dbFile = dbFile
         this.eventQueue = new LinkedBlockingQueue<TaskEvent>()
         // TODO: maybe we should use a lock instead?
@@ -363,5 +364,15 @@ class SqliteDatabaseService implements DatabaseService {
             log.error("Error fetching data with extracted metadata: {}, no nf-metalog report will be generated.", e.message, e)
         }
         return result
+    }
+
+    @Override
+    boolean isClosed() {
+        try {
+            return dbConnection == null || dbConnection.isClosed()
+        } catch (SQLException e) {
+            log.error("Error checking if SQLite connection is closed: {}", e.message, e)
+            return true
+        }
     }
 }

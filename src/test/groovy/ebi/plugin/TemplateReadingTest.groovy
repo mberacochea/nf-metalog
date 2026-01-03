@@ -1,13 +1,12 @@
 package ebi.plugin
 
 import spock.lang.Specification
-import java.io.FileNotFoundException
 
 class TemplateReadingTest extends Specification {
 
     def "test readAsset method"() {
         when:
-        def template = GenerateMetalogHtml.readAsset("nf-metalog_report.html")
+        def template = Report.readAsset("nf-metalog_report.html")
 
         then:
         template != null
@@ -19,8 +18,8 @@ class TemplateReadingTest extends Specification {
 
     def "test readAsset with assets"() {
         when:
-        def cssContent = GenerateMetalogHtml.readAsset("assets/nf-metalog_report.css")
-        def jsContent = GenerateMetalogHtml.readAsset("assets/nf-metalog_report.js")
+        def cssContent = Report.readAsset("assets/nf-metalog_report.css")
+        def jsContent = Report.readAsset("assets/nf-metalog_report.js")
 
         then:
         cssContent != null
@@ -34,7 +33,7 @@ class TemplateReadingTest extends Specification {
 
     def "test readAsset with non-existent resource"() {
         when:
-        GenerateMetalogHtml.readAsset("non-existent-file.txt")
+        Report.readAsset("non-existent-file.txt")
 
         then:
         thrown(FileNotFoundException)
