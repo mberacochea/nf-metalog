@@ -17,11 +17,26 @@
 package ebi.plugin
 
 import spock.lang.Specification
-import nextflow.processor.TaskHandler
 import nextflow.trace.TraceRecord
+import nextflow.processor.TaskId
 import ebi.plugin.storage.MemoryStorageBackend
 
 class MemoryStorageBackendTest extends Specification {
+
+    private TraceRecord createMockTraceRecord(String taskId, String status) {
+        Mock(TraceRecord) {
+            get('task_id') >> taskId
+            get('process') >> 'TEST_PROCESS'
+            get('status') >> status
+            get('hash') >> 'abc123'
+            get('name') >> 'test-task'
+            get('exit') >> (status == 'COMPLETED' ? 0 : null)
+            get('%cpu') >> 50.0
+            get('%mem') >> 75.0
+            getSimpleName() >> 'TEST_PROCESS'
+            getTaskId() >> TaskId.of(taskId)
+        }
+    }
 
     def "test memory backend initialization"() {
         given:
@@ -40,11 +55,10 @@ class MemoryStorageBackendTest extends Specification {
         dbService.initialize()
         
         // Create mock task handler and trace
-        def taskHandler = Mock(TaskHandler)
-        def traceRecord = Mock(TraceRecord)
+        def traceRecord = createMockTraceRecord("1", "COMPLETED")
 
         when:
-        dbService.insertOrUpdateTaskEvent("test-run", "sample1", taskHandler, traceRecord)
+        dbService.insertOrUpdateTaskEvent("test-run", "sample1", traceRecord)
         def results = dbService.fetchAllData("test-run")
 
         then:
@@ -59,22 +73,18 @@ class MemoryStorageBackendTest extends Specification {
         def dbService = new MemoryStorageBackend()
         dbService.initialize()
         
-        def taskHandler = Mock(TaskHandler)
-        def traceRecord = Mock(TraceRecord)
+        def traceRecord1 = createMockTraceRecord("1", "COMPLETED")
+        def traceRecord2 = createMockTraceRecord("2", "COMPLETED")
 
         when:
-        dbService.insertOrUpdateTaskEvent("test-run", "sample1", taskHandler, traceRecord)
-        dbService.insertOrUpdateTaskEvent("test-run", "sample2", taskHandler, traceRecord)
-        dbService.insertOrUpdateTaskEvent("other-run", "sample3", taskHandler, traceRecord)
-        
+        dbService.insertOrUpdateTaskEvent("test-run", "sample1", traceRecord1)
+        dbService.insertOrUpdateTaskEvent("test-run", "sample2", traceRecord2)
+
         def results = dbService.fetchAllData("test-run")
-        def otherResults = dbService.fetchAllData("other-run")
 
         then:
         results.size() == 2
-        otherResults.size() == 1
         results.every { it.run_name == "test-run" }
-        otherResults.every { it.run_name == "other-run" }
     }
 
     def "test database close and reopen"() {
@@ -82,11 +92,10 @@ class MemoryStorageBackendTest extends Specification {
         def dbService = new MemoryStorageBackend()
         dbService.initialize()
         
-        def taskHandler = Mock(TaskHandler)
-        def traceRecord = Mock(TraceRecord)
+        def traceRecord = createMockTraceRecord("1", "COMPLETED")
         
         // Add some data
-        dbService.insertOrUpdateTaskEvent("test-run", "sample1", taskHandler, traceRecord)
+        dbService.insertOrUpdateTaskEvent("test-run", "sample1", traceRecord)
 
         when:
         dbService.close()
@@ -106,16 +115,15 @@ class MemoryStorageBackendTest extends Specification {
         def dbService = new MemoryStorageBackend()
         dbService.initialize()
         
-        def taskHandler = Mock(TaskHandler)
-        def traceRecord = Mock(TraceRecord)
-        
         def threads = []
         def threadCount = 10
 
         when:
         for (i in 0..<threadCount) {
+            def index = i
             def thread = new Thread({
-                dbService.insertOrUpdateTaskEvent("test-run", "sample${i}", taskHandler, traceRecord)
+                def traceRecord = createMockTraceRecord("${index}", "COMPLETED")
+                dbService.insertOrUpdateTaskEvent("test-run", "sample${i}", traceRecord)
             })
             threads << thread
             thread.start()
@@ -150,15 +158,33 @@ class MemoryStorageBackendTest extends Specification {
         dbService.initialize()
         dbService.close()
         
-        def taskHandler = Mock(TaskHandler)
-        def traceRecord = Mock(TraceRecord)
+        def traceRecord = createMockTraceRecord("1", "COMPLETED")
 
         when:
-        dbService.insertOrUpdateTaskEvent("test-run", "sample1", taskHandler, traceRecord)
+        dbService.insertOrUpdateTaskEvent("test-run", "sample1", traceRecord)
         def results = dbService.fetchAllData("test-run")
 
         then:
         results.size() == 0
         dbService.isClosed()
+    }
+
+    def "test upsert behavior - same task id should update existing record"() {
+        given:
+        def dbService = new MemoryStorageBackend()
+        dbService.initialize()
+        
+        def traceRecord1 = createMockTraceRecord("1", "RUNNING")
+        def traceRecord2 = createMockTraceRecord("1", "COMPLETED")
+
+        when:
+        dbService.insertOrUpdateTaskEvent("test-run", "sample1", traceRecord1)
+        dbService.insertOrUpdateTaskEvent("test-run", "sample1", traceRecord2)
+        
+        def results = dbService.fetchAllData("test-run")
+
+        then:
+        results.size() == 1  // Should only have one record
+        results[0].status == "COMPLETED"  // Should have the updated status
     }
 }

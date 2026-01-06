@@ -40,11 +40,10 @@ interface StorageBackend {
      *
      * @param runName The Nextflow run name
      * @param groupId The grouping ID (usually the meta.id) extracted from task inputs
-     * @param handler The task handler
      * @param trace The trace record containing task metadata including task_id and status
      * @throws Exception if upsert fails
      */
-    void insertOrUpdateTaskEvent(String runName, String groupId, TaskHandler handler, TraceRecord trace)
+    void insertOrUpdateTaskEvent(String runName, String groupId, TraceRecord trace)
 
     /**
      * Close the database connection and cleanup resources
@@ -59,7 +58,7 @@ interface StorageBackend {
      * @return A list of maps representing the rows with all metadata extracted into separate columns
      * @throws Exception if fetching data fails
      */
-    List<Map<String, Object>> fetchAllData(String runName)
+    List<Map<String, String>> fetchAllData(String runName)
 
     /**
      * Check if the storage backend has been closed

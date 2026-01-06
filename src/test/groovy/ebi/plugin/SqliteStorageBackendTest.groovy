@@ -1,7 +1,5 @@
 package ebi.plugin
 
-import nextflow.processor.TaskHandler
-import nextflow.processor.TaskRun
 import nextflow.trace.TraceRecord
 import spock.lang.Specification
 import spock.lang.TempDir
@@ -10,7 +8,6 @@ import spock.util.concurrent.PollingConditions
 import java.nio.file.Path
 import java.sql.ResultSet
 
-import ebi.plugin.TestDatabaseUtils
 import ebi.plugin.storage.SqliteStorageBackend
 
 /**
@@ -54,11 +51,10 @@ class SqliteStorageBackendTest extends Specification {
         service.initialize()
 
         and:
-        def handler = createMockTaskHandler('TEST_PROCESS')
         def trace = createMockTraceRecord('task-123', 'COMPLETED')
 
         when:
-        service.insertOrUpdateTaskEvent('test-run', 'sample-1', handler, trace)
+        service.insertOrUpdateTaskEvent('test-run', 'sample-1', trace)
 
         and: 'wait for worker thread to process the event'
         new PollingConditions(timeout: 5, delay: 0.1).eventually {
@@ -79,7 +75,9 @@ class SqliteStorageBackendTest extends Specification {
                             run_name: rs.getString('run_name'),
                             group_id: rs.getString('group_id'),
                             process: rs.getString('process'),
-                            status: rs.getString('status')
+                            status: rs.getString('status'),
+                            cpu_percent: rs.getString('cpu_percent'),
+                            mem_percent: rs.getString('mem_percent')
                         ]
                     }
                     return null
@@ -95,11 +93,15 @@ class SqliteStorageBackendTest extends Specification {
         rowData.process == 'TEST_PROCESS'
         rowData.status == 'COMPLETED'
         
-        // Verify metadata exists separately
-        def metadata = TestDatabaseUtils.withConnection(dbFile) { conn ->
-            TestDatabaseUtils.getSingleStringResult(conn, "SELECT metadata FROM metalog WHERE task_id = 'task-123'")
+        // Verify individual columns exist (no metadata column anymore)
+        def cpuPercent = TestDatabaseUtils.withConnection(dbFile) { conn ->
+            TestDatabaseUtils.getSingleStringResult(conn, "SELECT cpu_percent FROM metalog WHERE task_id = 'task-123'")
         }
-        metadata != null
+        def memPercent = TestDatabaseUtils.withConnection(dbFile) { conn ->
+            TestDatabaseUtils.getSingleStringResult(conn, "SELECT mem_percent FROM metalog WHERE task_id = 'task-123'")
+        }
+        cpuPercent != null
+        memPercent != null
 
         cleanup:
         service?.close()
@@ -112,12 +114,11 @@ class SqliteStorageBackendTest extends Specification {
         service.initialize()
 
         and:
-        def handler = createMockTaskHandler('TEST_PROCESS')
         def trace1 = createMockTraceRecord('task-123', 'RUNNING')
         def trace2 = createMockTraceRecord('task-123', 'COMPLETED')
 
         when: 'insert first event with RUNNING status'
-        service.insertOrUpdateTaskEvent('test-run', 'sample-1', handler, trace1)
+        service.insertOrUpdateTaskEvent('test-run', 'sample-1', trace1)
 
         and: 'wait for processing'
         new PollingConditions(timeout: 5, delay: 0.1).eventually {
@@ -133,7 +134,7 @@ class SqliteStorageBackendTest extends Specification {
         rs1.close()
 
         when: 'update same task with COMPLETED status'
-        service.insertOrUpdateTaskEvent('test-run', 'sample-1', handler, trace2)
+        service.insertOrUpdateTaskEvent('test-run', 'sample-1', trace2)
 
         and: 'wait for processing'
         new PollingConditions(timeout: 5, delay: 0.1).eventually {
@@ -173,10 +174,8 @@ class SqliteStorageBackendTest extends Specification {
             threads << Thread.start {
                 def taskId = "task-${eventId}"
                 def groupId = "sample-${eventId % 20}"  // 20 different samples
-                def handler = createMockTaskHandler("PROCESS_${eventId % 5}")  // 5 different processes
                 def trace = createMockTraceRecord(taskId, 'COMPLETED')
-
-                service.insertOrUpdateTaskEvent('concurrent-run', groupId, handler, trace)
+                service.insertOrUpdateTaskEvent('concurrent-run', groupId, trace)
             }
         }
 
@@ -209,9 +208,8 @@ class SqliteStorageBackendTest extends Specification {
 
         when: 'submit many events rapidly'
         numEvents.times { i ->
-            def handler = createMockTaskHandler("PROCESS_${i % 10}")
             def trace = createMockTraceRecord("task-${i}", 'COMPLETED')
-            service.insertOrUpdateTaskEvent('load-test-run', "sample-${i % 50}", handler, trace)
+            service.insertOrUpdateTaskEvent('load-test-run', "sample-${i % 50}", trace)
         }
 
         and: 'wait for all events to be processed'
@@ -240,9 +238,8 @@ class SqliteStorageBackendTest extends Specification {
 
         when: 'submit many events'
         numEvents.times { i ->
-            def handler = createMockTaskHandler("PROCESS")
             def trace = createMockTraceRecord("task-${i}", 'COMPLETED')
-            service.insertOrUpdateTaskEvent('shutdown-test', "sample-${i}", handler, trace)
+            service.insertOrUpdateTaskEvent('shutdown-test', "sample-${i}", trace)
         }
 
         and: 'immediately close (events may still be in queue)'
@@ -256,14 +253,13 @@ class SqliteStorageBackendTest extends Specification {
         rs?.close()
     }
 
-    def 'should store JSON metadata with trace fields'() {
+    def 'should store individual columns with trace fields'() {
         given:
         def dbFile = tempDir.resolve('test.db')
         def service = new SqliteStorageBackend(dbFile)
         service.initialize()
 
         and:
-        def handler = createMockTaskHandler('TEST_PROCESS')
         def trace = Mock(TraceRecord) {
             get('task_id') >> 'task-json-123'
             get('process') >> 'TEST_PROCESS'
@@ -279,7 +275,7 @@ class SqliteStorageBackendTest extends Specification {
         }
 
         when:
-        service.insertOrUpdateTaskEvent('test-run', 'sample-1', handler, trace)
+        service.insertOrUpdateTaskEvent('test-run', 'sample-1', trace)
 
         and: 'wait for processing'
         new PollingConditions(timeout: 5, delay: 0.1).eventually {
@@ -288,14 +284,26 @@ class SqliteStorageBackendTest extends Specification {
         }
 
         then:
-        def rs = queryDatabase(dbFile, "SELECT metadata FROM metalog WHERE task_id = 'task-json-123'")
-        def metadata = rs.getString('metadata')
-        metadata.contains('"hash":"abc123"')
-        metadata.contains('"duration":1000')
-        metadata.contains('"container":"docker://myimage:latest"')
+        // Verify individual columns are stored correctly
+        def hash = TestDatabaseUtils.withConnection(dbFile) { conn ->
+            TestDatabaseUtils.getSingleStringResult(conn, "SELECT hash FROM metalog WHERE task_id = 'task-json-123'")
+        }
+        def duration = TestDatabaseUtils.withConnection(dbFile) { conn ->
+            TestDatabaseUtils.getSingleStringResult(conn, "SELECT duration FROM metalog WHERE task_id = 'task-json-123'")
+        }
+        def container = TestDatabaseUtils.withConnection(dbFile) { conn ->
+            TestDatabaseUtils.getSingleStringResult(conn, "SELECT container FROM metalog WHERE task_id = 'task-json-123'")
+        }
+        def cpuPercent = TestDatabaseUtils.withConnection(dbFile) { conn ->
+            TestDatabaseUtils.getSingleStringResult(conn, "SELECT cpu_percent FROM metalog WHERE task_id = 'task-json-123'")
+        }
+        
+        hash == 'abc123'
+        duration == '1000'
+        container == 'docker://myimage:latest'
+        cpuPercent == '95.5'
 
         cleanup:
-        rs?.close()
         service?.close()
     }
 
@@ -312,10 +320,9 @@ class SqliteStorageBackendTest extends Specification {
         when: 'simulate task lifecycle updates (submit -> running -> completed)'
         numSamples.times { sampleId ->
             updatesPerSample.times { updateNum ->
-                def handler = createMockTaskHandler("PROCESS_${sampleId}")
                 def status = ['SUBMITTED', 'RUNNING', 'RUNNING', 'RUNNING', 'COMPLETED'][updateNum]
                 def trace = createMockTraceRecord("task-${sampleId}", status)
-                service.insertOrUpdateTaskEvent('mixed-test', "sample-${sampleId}", handler, trace)
+                service.insertOrUpdateTaskEvent('mixed-test', "sample-${sampleId}", trace)
             }
         }
 
@@ -353,15 +360,6 @@ class SqliteStorageBackendTest extends Specification {
         }
     }
 
-    private TaskHandler createMockTaskHandler(String processName) {
-        def task = Mock(TaskRun) {
-            getName() >> processName
-        }
-        Mock(TaskHandler) {
-            getTask() >> task
-        }
-    }
-
     private TraceRecord createMockTraceRecord(String taskId, String status) {
         Mock(TraceRecord) {
             get('task_id') >> taskId
@@ -370,6 +368,9 @@ class SqliteStorageBackendTest extends Specification {
             get('hash') >> 'abc123'
             get('name') >> 'test-task'
             get('exit') >> (status == 'COMPLETED' ? 0 : null)
+            get('%cpu') >> 50.0
+            get('%mem') >> 75.0
+            getSimpleName() >> 'TEST_PROCESS'
         }
     }
 }

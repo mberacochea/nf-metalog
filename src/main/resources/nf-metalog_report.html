@@ -5,21 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>[${workflow.runName}] nf-metalog report</title>
     <!-- CSS Assets -->
-    <% css_assets.each { css -> %>
     <style>
+    <% css_assets.each { css -> %>
         <%= css %>
-    </style>
     <% } %>
+    </style>
     <!-- Make data globally available for debugging and easier access -->
     <script>
         window.nfMetalogData = ${data};
+        <% js_assets.each { js -> %>
+        <%= js %>
+        <% } %>
     </script>
     <!-- JavaScript Assets -->
-    <% js_assets.each { js -> %>
-    <script>
-        <%= js %>
-    </script>
-    <% } %>
 </head>
 <body>
     <!-- Navigation Bar with Anchor Links -->
@@ -107,8 +105,8 @@
                         <div class="col">
                             <div class="card">
                                 <div class="card-body">
-                                    <h5 class="card-title">CPU hours</h5>
-                                    <p class="card-text">${workflow.stats.computeTimeFmt}</p>
+                                    <h5 class="card-title">${workflow.stats.computeTimeFmt}</h5>
+                                    <p class="card-text">CPU hours</p>
                                 </div>
                             </div>
                         </div>
@@ -255,7 +253,7 @@
                 </div>
                 <div class="card-body">
                     <p class="text-muted mb-4">Select a sample to view its resource usage and task execution details.</p>
-                    <table id="samples-grid"></table>
+                    <table id="samples-table" class="table table-striped"></table>
                 </div>
             </div>
         </section>
@@ -293,7 +291,7 @@
                 </div>
                 <div class="card-body">
                     <p class="text-muted mb-4">Comprehensive task information filtered by the selected sample.</p>
-                    <table id="tasks-grid"></table>
+                    <table id="tasks-table" class="table table-striped"></table>
                 </div>
             </div>
         </section>

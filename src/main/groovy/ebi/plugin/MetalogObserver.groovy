@@ -101,7 +101,7 @@ class MetalogObserver implements TraceObserverV2 {
                 return
             }
 
-            storageBackend.insertOrUpdateTaskEvent(runName, groupId, event.handler, event.trace)
+            storageBackend.insertOrUpdateTaskEvent(runName, groupId, event.trace)
             log.debug("Row inserted to database for task {} with id={}", event?.handler?.task?.name ?: "unknown", groupId)
 
         } catch (Exception e) {

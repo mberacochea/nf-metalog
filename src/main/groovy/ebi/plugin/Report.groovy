@@ -16,6 +16,7 @@
 
 package ebi.plugin
 
+import groovy.json.JsonOutput
 import groovy.util.logging.Slf4j
 import groovy.json.JsonBuilder
 import ebi.plugin.storage.StorageBackend
@@ -27,6 +28,8 @@ import nextflow.script.WorkflowMetadata
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import org.apache.commons.csv.CSVFormat
+import org.apache.commons.csv.CSVPrinter
 
 @Slf4j
 class Report {
@@ -44,19 +47,19 @@ class Report {
 
             def templateString = readAsset("nf-metalog_report.html")
             def jsAssets = []
-            jsAssets.add(readAsset("assets/bootstrap.bundle.min.js"))
             jsAssets.add(readAsset("assets/datatables.min.js"))
+            jsAssets.add(readAsset("assets/bootstrap.bundle.min.js"))
             jsAssets.add(readAsset("assets/nf-metalog_report.js"))
             jsAssets.add(readAsset("assets/plotly-basic-3.3.1.min.js"))
 
             def cssAssets = []
-            cssAssets.add(readAsset("assets/bootstrap.min.css"))
             cssAssets.add(readAsset("assets/datatables.min.css"))
+            cssAssets.add(readAsset("assets/bootstrap.min.css"))
             cssAssets.add(readAsset("assets/nf-metalog_report.css"))
 
             def binding = [
                 workflow: workflow,
-                data: new JsonBuilder( csvData ).toString(),
+                data: new JsonBuilder( csvData ).toPrettyString(),
                 js_assets: jsAssets,
                 css_assets: cssAssets
             ]
@@ -103,30 +106,38 @@ class Report {
     }
 
     /**
-     * Write the data to a CSV file
+     * Write the data to a CSV file using Apache Commons CSV
      * @param data
      * @param csvFile
      */
     static void writeCsv(List<Map<String, Object>> data, String csvFile) {
-        def csv = new StringBuilder()
         if (data.size() == 0) {
             log.info("No data to write in the metalog CSV file")
             return
         }
-        // TODO: there has to be a CSV write in Groovy
-        // Write headers
-        def headers = data[0].keySet()
-        csv.append(headers.join(","))
-        csv.append("\n")
-
-        // Write rows
-        data.each { row ->
-            def values = headers.collect { header -> row[header] }
-            csv.append(values.join(","))
-            csv.append("\n")
+        
+        // Get headers from the first row
+        def headers = data[0].keySet() as String[]
+        
+        // Create CSV format with headers
+        def csvFormat = CSVFormat.DEFAULT.withHeader(headers)
+        
+        // Use BufferedWriter to write to file
+        Path csvPath = Paths.get(csvFile)
+        try (def writer = Files.newBufferedWriter(csvPath);
+             def csvPrinter = new CSVPrinter(writer, csvFormat)) {
+            
+            // Write each row
+            data.each { row ->
+                def values = headers.collect { header -> row[header] }
+                csvPrinter.printRecord(values)
+            }
+            
+            csvPrinter.flush()
+        } catch (Exception e) {
+            log.error("Error writing CSV file: ${csvFile}", e)
+            throw e
         }
-
-        Files.write(Paths.get(csvFile), csv.toString().getBytes())
     }
 
     /**

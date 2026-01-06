@@ -18,15 +18,14 @@ package ebi.plugin.storage
 
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
-import nextflow.processor.TaskHandler
+import nextflow.processor.TaskId
 import nextflow.trace.TraceRecord
 
 @Slf4j
 @CompileStatic
 class MemoryStorageBackend implements StorageBackend {
 
-    private final List<Map<String, Object>> taskEvents = new ArrayList<>()
-    private final Object lock = new Object()
+    private final Map<TaskId, Map<String, String>> taskEvents = new LinkedHashMap<>()
     private boolean closed = false
 
     MemoryStorageBackend() {
@@ -40,17 +39,26 @@ class MemoryStorageBackend implements StorageBackend {
     }
 
     @Override
-    void insertOrUpdateTaskEvent(String runName, String groupId, TaskHandler handler, TraceRecord trace) {
+    void insertOrUpdateTaskEvent(String runName, String groupId, TraceRecord trace) {
         if (closed) {
             log.warn "Attempt to insert into closed memory database"
             return
         }
 
         try {
-            synchronized (lock) {
+            synchronized (taskEvents) {
                 // For memory storage, we'll just append new events
-                def event = createTaskEventMap(runName, groupId, handler, trace)
-                taskEvents.add(event)
+                def event = new HashMap<String, String>()
+                // Extract basic information
+                event.put("run_name", runName) // This is not used because the data is not persisted
+                event.put("group_id", groupId)
+                event.put("process", trace.getSimpleName())
+
+                TraceRecord.FIELDS
+                        .findAll { name, _ -> name != 'process' && trace?.get(name) != null }
+                        .each { name, _ -> event.put(name, trace.get(name).toString()) }
+
+                taskEvents[trace.taskId] = event
                 log.debug "Inserted task event to memory backend for groupId={}", groupId
             }
         } catch (Exception e) {
@@ -59,15 +67,16 @@ class MemoryStorageBackend implements StorageBackend {
     }
 
     @Override
-    List<Map<String, Object>> fetchAllData(String runName) {
+    List<Map<String, String>> fetchAllData(String runName) {
         if (closed) {
             log.warn "Attempt to fetch from closed memory database"
             return []
         }
 
         try {
-            synchronized (lock) {
+            synchronized (taskEvents) {
                 return taskEvents
+                        .collect { _, data -> data }
             }
         } catch (Exception e) {
             log.error "Error fetching data from memory backend: {}", e.message, e
@@ -83,7 +92,7 @@ class MemoryStorageBackend implements StorageBackend {
         }
 
         try {
-            synchronized (lock) {
+            synchronized (taskEvents) {
                 taskEvents.clear()
                 closed = true
                 log.info "Memory database closed, all data cleared"
@@ -99,38 +108,10 @@ class MemoryStorageBackend implements StorageBackend {
     }
 
     /**
-     * Create a task event map from handler and trace objects
-     */
-    private Map<String, Object> createTaskEventMap(String runName, String groupId, TaskHandler handler, TraceRecord trace) {
-        def event = new HashMap<String, Object>()
-        
-        // Extract basic information
-        event.put("run_name", runName)
-        event.put("group_id", groupId)
-        event.put("process_name", trace?.getSimpleName() ?: "unknown")  // Use getSimpleName() like SQLite
-        event.put("status", handler?.status?.toString() ?: "unknown")
-        
-        // Extract all trace fields dynamically (similar to SqliteDatabaseService)
-        if (trace != null) {
-            TraceRecord.FIELDS.each { name, _type ->
-                Object value = trace.get(name)
-                if (value != null) {
-                    event.put(name, value.toString())
-                }
-            }
-        }
-        
-        // Add current timestamp
-        event.put("timestamp", new Date().toString())
-        
-        return event
-    }
-
-    /**
      * Get the current size of the in-memory database
      */
     int getSize() {
-        synchronized (lock) {
+        synchronized (taskEvents) {
             return taskEvents.size()
         }
     }

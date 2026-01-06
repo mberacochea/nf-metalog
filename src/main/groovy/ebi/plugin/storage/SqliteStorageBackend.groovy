@@ -16,7 +16,6 @@
 
 package ebi.plugin.storage
 
-import javax.xml.crypto.dsig.TransformService
 import java.nio.file.Path
 import java.sql.SQLException
 import java.sql.Connection
@@ -29,7 +28,6 @@ import java.util.concurrent.TimeUnit
 
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
-import org.json.JSONObject
 
 import nextflow.processor.TaskHandler
 import nextflow.trace.TraceRecord
@@ -43,29 +41,35 @@ import nextflow.trace.TraceRecord
 @CompileStatic
 class SqliteStorageBackend implements StorageBackend {
 
-    private static class TaskEvent {
-        final String runName
-        final String groupId
-        final String taskName
-        final TraceRecord trace
+    class EventRecord {
+        String runName
+        String groupId
+        TraceRecord trace
 
-        TaskEvent(String runName, String groupId, String taskName, TraceRecord trace) {
+        EventRecord(String runName, String groupId, TraceRecord trace) {
             this.runName = runName
             this.groupId = groupId
-            this.taskName = taskName
             this.trace = trace
         }
     }
 
+    /**
+     * Column mapping for non-sql friendly names
+     */
+    private static final Map<String, String> COLUMN_MAPPING = [
+            '%cpu': 'cpu_percent',
+            '%mem': 'mem_percent'
+    ]
+
     private final Path dbFile
     private Connection dbConnection
-    private final BlockingQueue<TaskEvent> eventQueue
+    private final BlockingQueue<EventRecord> eventQueue
     private final Thread workerThread
     private volatile boolean shutdown = false
 
     SqliteStorageBackend(Path dbFile) {
         this.dbFile = dbFile
-        this.eventQueue = new LinkedBlockingQueue<TaskEvent>()
+        this.eventQueue = new LinkedBlockingQueue<EventRecord>()
         // TODO: maybe we should use a lock instead?
         this.workerThread = createWorkerThread()
     }
@@ -79,9 +83,9 @@ class SqliteStorageBackend implements StorageBackend {
             // We let the queue be drained after being shutdown
             while (!shutdown || !eventQueue.isEmpty()) {
                 try {
-                    final event = eventQueue.poll(100, TimeUnit.MILLISECONDS)
-                    if (event != null) {
-                        processTaskEvent(event)
+                    final eventRecord = eventQueue.poll(100, TimeUnit.MILLISECONDS)
+                    if (eventRecord != null) {
+                        processTaskEvent(eventRecord)
                     }
                 } catch (InterruptedException ignored) {
                     log.debug "Worker thread interrupted"
@@ -120,13 +124,50 @@ class SqliteStorageBackend implements StorageBackend {
             // Create table if it doesn't exist with task_id as primary key
             final createTableSQL = """
                 CREATE TABLE IF NOT EXISTS metalog (
-                    run_name TEXT NOT NULL,
-                    group_id TEXT NOT NULL,
-                    ingested TEXT NOT NULL,
-                    process_name TEXT,
+                    run_name TEXT NOT NULL, -- The workflow execution run name
+                    group_id TEXT NOT NULL, -- The meta key used to group the data
                     task_id TEXT PRIMARY KEY,
+                    hash TEXT,
+                    native_id TEXT,
+                    process TEXT,
+                    module TEXT,
+                    container TEXT,
+                    tag TEXT,
+                    name TEXT,
                     status TEXT,
-                    metadata TEXT
+                    exit TEXT,
+                    submit INTEGER,  -- Unix timestamp (seconds since epoch)
+                    start INTEGER,   -- Unix timestamp
+                    complete INTEGER, -- Unix timestamp
+                    duration INTEGER, -- Duration in milliseconds
+                    realtime INTEGER, -- Duration in milliseconds
+                    cpu_percent REAL, -- Percentage value (0-100+)
+                    mem_percent REAL, -- Percentage value (0-100)
+                    rss INTEGER,      -- Memory in bytes
+                    vmem INTEGER,     -- Memory in bytes
+                    peak_rss INTEGER, -- Memory in bytes
+                    peak_vmem INTEGER, -- Memory in bytes
+                    rchar INTEGER,    -- Memory/bytes read
+                    wchar INTEGER,    -- Memory/bytes written
+                    syscr INTEGER,    -- Number of read syscalls
+                    syscw INTEGER,    -- Number of write syscalls
+                    read_bytes INTEGER,  -- Bytes read
+                    write_bytes INTEGER, -- Bytes written
+                    attempt INTEGER,
+                    workdir TEXT,
+                    script TEXT,
+                    scratch TEXT,
+                    queue TEXT,
+                    cpus INTEGER,
+                    memory INTEGER,   -- Memory in bytes
+                    disk INTEGER,     -- Disk space in bytes
+                    time INTEGER,     -- Time in milliseconds
+                    env TEXT,
+                    error_action TEXT,
+                    vol_ctxt INTEGER, -- Voluntary context switches
+                    inv_ctxt INTEGER, -- Involuntary context switches
+                    hostname TEXT,
+                    cpu_model TEXT
                 )
             """.stripIndent()
 
@@ -146,61 +187,68 @@ class SqliteStorageBackend implements StorageBackend {
     }
 
     @Override
-    void insertOrUpdateTaskEvent(String runName, String groupId, TaskHandler handler, TraceRecord trace) {
+    void insertOrUpdateTaskEvent(String runName, String groupId, TraceRecord trace) {
         try {
-            final taskName = handler.task.name
-            final event = new TaskEvent(runName, groupId, taskName, trace)
+            final eventRecord = new EventRecord(runName, groupId, trace)
 
             // Add event to queue for async processing
-            eventQueue.put(event)
+            eventQueue.put(eventRecord)
 
             final queueSize = eventQueue.size()
             if (queueSize > 100 && queueSize % 100 == 0) {
                 log.warn "SQLite queue size is {} - backpressure piling up", queueSize
             }
         } catch (InterruptedException e) {
-            log.error("Interrupted while queueing task event for {}: {}", handler?.task?.name ?: "unknown", e.message, e)
+            log.error("Interrupted while queueing task event.", e)
             Thread.currentThread().interrupt()
         } catch (Exception e) {
-            log.error("Error queueing task event for {}: {}", handler?.task?.name ?: "unknown", e.message, e)
+            log.error("Error queueing task event.", e)
         }
     }
 
     /**
      * Processes a single task event from the queue and performs the upsert
      */
-    private void processTaskEvent(TaskEvent event) {
-        try {
-            final String taskId = event.trace.get('task_id')?.toString()
-            final JSONObject jsonMetadata = buildTraceJSON(event.trace)
+    private void processTaskEvent(EventRecord eventRecord) {
 
-            // Use INSERT OR REPLACE for upsert behavior based on task_id
-            // This allows tracking task status transitions (pending -> running -> cached/completed/failed)
-            final upsertSQL = """
-                INSERT INTO metalog (run_name, ingested, group_id, process_name, task_id, status, metadata)
-                VALUES (?, datetime('now'), ?, ?, ?, ?, ?)
-                ON CONFLICT(task_id) DO UPDATE SET
-                    ingested = datetime('now'),
-                    status = excluded.status,
-                    metadata = excluded.metadata
-            """.stripIndent()
+        String runName = eventRecord.runName
+        String groupId = eventRecord.groupId
+        TraceRecord traceRecord = eventRecord.trace
 
-            dbConnection.prepareStatement(upsertSQL).withCloseable { PreparedStatement stmt ->
-                stmt.setString(1, event.runName)
-                stmt.setString(2, event.groupId)
-                stmt.setString(3, event.trace.getSimpleName())
-                stmt.setString(4, taskId)
-                stmt.setString(5, event.trace.get('status')?.toString())
-                stmt.setString(6, jsonMetadata.toString())
+        def columns = TraceRecord.FIELDS.keySet().collect { field ->
+            COLUMN_MAPPING.getOrDefault(field, field)
+        }
+        def values = TraceRecord.FIELDS.keySet().collect { field ->
+            field == "process" ? traceRecord.getSimpleName() : traceRecord.get(field)?.toString()
+        }
 
-                stmt.executeUpdate()
+        // Prepend the metadata columns (run_name, group_id)
+        def allColumns = ['run_name', 'group_id'] + columns
+        def allValues = [runName, groupId] + values
+
+        def columnList = allColumns.join(', ')
+        def placeholders = (['?'] * allColumns.size()).join(', ')
+
+        // Build UPDATE SET clause (excluding primary key)
+        def updateClauses = allColumns
+                .findAll { it != 'task_id' }
+                .collect { "${it} = excluded.${it}" }
+                .join(', ')
+
+        final upsertSQL = """
+            INSERT INTO metalog (${columnList})
+            VALUES (${placeholders})
+            ON CONFLICT(task_id) DO UPDATE SET ${updateClauses}
+        """.stripIndent()
+
+        dbConnection.prepareStatement(upsertSQL).withCloseable { PreparedStatement stmt ->
+            // JDBC parameters are 1-indexed, not 0-indexed like arrays
+            allValues.eachWithIndex { value, index ->
+                stmt.setObject(index + 1, value)
             }
-
-        } catch (Exception e) {
-            log.error("Error upserting to SQLite for task {}: {}", event?.taskName ?: "unknown", e.message, e)
+            stmt.executeUpdate()
         }
     }
-
 
     @Override
     void close() {
@@ -233,22 +281,6 @@ class SqliteStorageBackend implements StorageBackend {
     }
 
     /**
-     * Builds a JSON object with all TraceRecord fields (except status which is a separate column)
-     */
-    private static JSONObject buildTraceJSON(TraceRecord trace) {
-        final json = new JSONObject()
-        // Add all TraceRecord fields to JSON (status is excluded as it's a separate column)
-        TraceRecord.FIELDS.each { name, _type ->
-            Object value = trace.get(name)
-            if (value != null) {
-                json.put(name, value)
-            }
-        }
-
-        return json
-    }
-
-    /**
      * Extracts all metadata from the JSON column into separate columns for CSV export.
      * This provides a complete flattened view of all task metadata fields.
      *
@@ -256,114 +288,43 @@ class SqliteStorageBackend implements StorageBackend {
      * @return A list of maps where each map represents a row with all metadata extracted
      *         into separate columns, ready for CSV writing or other data processing
      */
-    List<Map<String, Object>> fetchAllData(String runName) {
-        List<Map<String, Object>> result = []
-        try {
-            if (dbConnection == null || dbConnection.isClosed()) {
-                throw new IllegalStateException("Database connection is not open")
-            }
+    List<Map<String, String>> fetchAllData(String runName) {
+        List<Map<String, String>> result = []
 
-            // Clean, readable SQL query that extracts all metadata fields from JSON
-            final query = """
-                SELECT 
-                    run_name,
-                    group_id,
-                    ingested,
-                    process_name,
-                    task_id,
-                    status,
-                    -- Task identification and execution metadata
-                    json_extract(metadata, '\$.hash') as hash,
-                    json_extract(metadata, '\$.native_id') as native_id,
-                    json_extract(metadata, '\$.tag') as tag,
-                    json_extract(metadata, '\$.exit') as exit,
-                    json_extract(metadata, '\$.submit') as submit,
-                    json_extract(metadata, '\$.start') as start,
-                    json_extract(metadata, '\$.complete') as complete,
-                    json_extract(metadata, '\$.duration') as duration,
-                    json_extract(metadata, '\$.realtime') as realtime,
-                    -- Resource usage metrics
-                    json_extract(metadata, '\$.cpu') as cpu,
-                    json_extract(metadata, '\$.peak_rss') as peak_rss,
-                    json_extract(metadata, '\$.peak_vmem') as peak_vmem,
-                    json_extract(metadata, '\$.rchar') as rchar,
-                    json_extract(metadata, '\$.wchar') as wchar,
-                    json_extract(metadata, '\$.syscr') as syscr,
-                    json_extract(metadata, '\$.syscw') as syscw,
-                    json_extract(metadata, '\$.read_bytes') as read_bytes,
-                    json_extract(metadata, '\$.write_bytes') as write_bytes,
-                    json_extract(metadata, '\$.mem') as mem,
-                    json_extract(metadata, '\$.vmem') as vmem,
-                    json_extract(metadata, '\$.rss') as rss,
-                    -- Environment and execution context
-                    json_extract(metadata, '\$.container') as container,
-                    json_extract(metadata, '\$.attempt') as attempt,
-                    json_extract(metadata, '\$.workdir') as workdir,
-                    json_extract(metadata, '\$.queue') as queue,
-                    -- Resource requests
-                    json_extract(metadata, '\$.cpus') as cpus,
-                    json_extract(metadata, '\$.memory') as memory,
-                    json_extract(metadata, '\$.disk') as disk,
-                    json_extract(metadata, '\$.time') as time
-                FROM metalog
-                WHERE run_name = ?
-            """
+        if (dbConnection == null || dbConnection.isClosed()) {
+            throw new IllegalStateException("Database connection is not open")
+        }
+
+        def columns = ['run_name', 'group_id'] + TraceRecord.FIELDS.keySet().collect { field ->
+            COLUMN_MAPPING.getOrDefault(field, field)
+        }
+
+        def columnList = columns.join(', ')
+
+        final query = """
+            SELECT ${columnList}
+            FROM metalog
+            WHERE run_name = ?
+        """.stripIndent()
+
+        try {
             dbConnection.prepareStatement(query).withCloseable { stmt ->
                 stmt.setString(1, runName)
                 stmt.executeQuery().withCloseable { ResultSet rs ->
                     while (rs.next()) {
-                        Map<String, Object> row = [:]
-
-                        // Basic task information
-                        row.run_name = rs.getString("run_name")
-                        row.group_id = rs.getString("group_id")
-                        row.ingested = rs.getString("ingested")
-                        row.process_name = rs.getString("process_name")
-                        row.task_id = rs.getString("task_id")
-                        row.status = rs.getString("status")
-
-                        // Task metadata (all lowercase, consistent naming)
-                        row.hash = rs.getString("hash")
-                        row.native_id = rs.getString("native_id")
-                        row.tag = rs.getString("tag")
-                        row.exit = rs.getString("exit")
-                        row.submit = rs.getString("submit")
-                        row.start = rs.getString("start")
-                        row.complete = rs.getString("complete")
-                        row.duration = rs.getString("duration")
-                        row.realtime = rs.getString("realtime")
-                        // Resource usage
-                        row.cpu = rs.getString("cpu")
-                        row.peak_rss = rs.getString("peak_rss")
-                        row.peak_vmem = rs.getString("peak_vmem")
-                        row.rchar = rs.getString("rchar")
-                        row.wchar = rs.getString("wchar")
-                        row.syscr = rs.getString("syscr")
-                        row.syscw = rs.getString("syscw")
-                        row.read_bytes = rs.getString("read_bytes")
-                        row.write_bytes = rs.getString("write_bytes")
-                        row.mem = rs.getString("mem")
-                        row.vmem = rs.getString("vmem")
-                        row.rss = rs.getString("rss")
-                        // Environment
-                        row.container = rs.getString("container")
-                        row.attempt = rs.getString("attempt")
-                        row.workdir = rs.getString("workdir")
-                        row.queue = rs.getString("queue")
-                        // Resource requests
-                        row.cpus = rs.getString("cpus")
-                        row.memory = rs.getString("memory")
-                        row.disk = rs.getString("disk")
-                        row.time = rs.getString("time")
-
+                        Map<String, String> row = [:]
+                        columns.each { column ->
+                            row[column] = rs.getString(column)
+                        }
                         result.add(row)
                     }
                 }
             }
+            return result
         } catch (Exception e) {
-            log.error("Error fetching data with extracted metadata: {}, no nf-metalog report will be generated.", e.message, e)
+            log.error("Error fetching data: {}, no nf-metalog report will be generated.", e.message, e)
+            return []
         }
-        return result
     }
 
     @Override

@@ -238,7 +238,7 @@ function initializeTables() {
         console.warn('No samples found - displaying empty state');
         
         // Show a message instead of empty table
-        const samplesGridContainer = document.getElementById('samples-grid');
+        const samplesGridContainer = document.getElementById('samples-table');
         samplesGridContainer.innerHTML = 
             '<div class="alert alert-info">' +
                 '<strong>No samples found</strong>' +
@@ -258,7 +258,7 @@ function initializeTables() {
     }
 
     // Initialize DataTables for samples
-    samplesTable = $('#samples-grid').DataTable({
+    samplesTable = $('#samples-table').DataTable({
         data: samplesData,
         columns: [
             { title: "Sample ID", data: "sample_id" },
@@ -278,7 +278,7 @@ function initializeTables() {
     });
 
     // Handle row selection using DataTables API
-    $('#samples-grid').on('click', 'tbody tr', function(e) {
+    $('#samples-table').on('click', 'tbody tr', function(e) {
         const row = samplesTable.row(this);
         const rowNode = this;
         
@@ -330,7 +330,7 @@ function updateTasksTable(sampleFilter = null) {
 
     if (!filteredData || filteredData.length === 0) {
         // Show empty state in table
-        const tasksGridContainer = document.getElementById('tasks-grid');
+        const tasksGridContainer = document.getElementById('tasks-table');
         tasksGridContainer.innerHTML = 
             '<div class="alert alert-info">' +
                 '<strong>No tasks found</strong>' +
@@ -342,14 +342,14 @@ function updateTasksTable(sampleFilter = null) {
     // Destroy existing DataTable if it exists
     if (tasksTable) {
         tasksTable.destroy();
-        $('#tasks-grid').empty();
+        $('#tasks-table').empty();
     }
 
     // Create new DataTable
-    tasksTable = $('#tasks-grid').DataTable({
+    tasksTable = $('#tasks-table').DataTable({
         data: filteredData,
         columns: [
-            { title: 'name', data: 'process_name' },
+            { title: 'name', data: 'process' },
             { title: 'status', data: 'status', render: function(data, type, row) {
                 if (type === 'display') {
                     const status = (data || '').toLowerCase();
@@ -367,8 +367,8 @@ function updateTasksTable(sampleFilter = null) {
             { title: 'start', data: 'start', render: formatDate },
             { title: 'complete', data: 'complete', render: formatDate },
             { title: 'duration', data: 'duration', render: formatDuration },
-            { title: '%cpu', data: '%cpu' },
-            { title: '%mem', data: '%mem' },
+            { title: '%cpu', data: 'cpu_percent' },
+            { title: '%mem', data: 'mem_percent' },
             { title: 'memory', data: 'memory', render: function(data, type, row) {
                 return formatMemory(data * 1024 * 1024, type, row); // Convert MB to bytes
             }},
@@ -387,7 +387,8 @@ function updateTasksTable(sampleFilter = null) {
                 return data;
             }},
             { title: 'script', data: 'script', render: function(data) {
-                return '<pre class="script_block short"><code>' + data.trim() + '</code></pre>';
+//                return '<pre class="script_block short"><code>' + data.trim() + '</code></pre>';
+                  return '--';
             }},
             { title: 'container', data: 'container', render: function(data) {
                 return '<samp>' + data + '</samp>';
@@ -489,7 +490,7 @@ function createCharts(sample) {
         // Create enhanced tooltips with task details
         const hoverText = nonZeroTasks.map(task => {
             return 
-                '<b>' + task.name + '</b><br>' +
+                '<b>' + task.process + '</b><br>' +
                 'Status: ' + (task.status || 'N/A') + '<br>' +
                 'Sample: ' + (task.group_id || 'N/A');
         });
@@ -497,7 +498,7 @@ function createCharts(sample) {
         return {
             hasData: true,
             data: [{
-                x: nonZeroTasks.map(task => task.name),
+                x: nonZeroTasks.map(task => task.process),
                 y: nonZeroTasks.map(task => task[valueKey] || 0),
                 type: 'bar',
                 marker: {
