@@ -437,10 +437,6 @@ function updateTasksTable(sampleFilter = null) {
     });
 }
 
-// ============================================
-// CHART GENERATION
-// ============================================
-
 /**
  * Create resource usage charts for selected sample
  * Generates Plotly bar charts for CPU, Memory, Duration, and Disk usage
@@ -508,9 +504,6 @@ function createCharts(sample) {
                         width: 1
                     }
                 },
-                hovertemplate: hoverText.map((text, i) => {
-                    return text + '<br>%{y:.2f} ' + yAxisTitle + '<extra></extra>';
-                }),
                 text: nonZeroTasks.map(task => task[valueKey] || 0),
                 textposition: 'outside',
                 textfont: {
@@ -521,10 +514,6 @@ function createCharts(sample) {
             layout: {
                 title: {
                     text: title,
-                    font: {
-                        size: 16,
-                        family: 'Arial, sans-serif'
-                    }
                 },
                 xaxis: {
                     title: 'Task',
@@ -537,13 +526,10 @@ function createCharts(sample) {
                         size: 14
                     }
                 },
-                margin: {t: 60, b: 100, l: 60, r: 20},
+//                margin: {t: 60, b: 100, l: 60, r: 20},
                 hovermode: 'closest',
                 plot_bgcolor: '#f8f9fa',
                 paper_bgcolor: '#ffffff',
-                font: {
-                    family: 'Arial, sans-serif'
-                }
             },
             config: {
                 responsive: true,
