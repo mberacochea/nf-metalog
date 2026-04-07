@@ -86,7 +86,9 @@ class MetalogObserver implements TraceObserverV2 {
 
     @Override
     void onFlowError(TaskEvent event) {
-        handleTaskEvent(event)
+        if (event?.handler != null) {
+            handleTaskEvent(event)
+        }
     }
 
     /**
@@ -115,13 +117,13 @@ class MetalogObserver implements TraceObserverV2 {
         try {
             if (storageBackend == null) {
                 log.error "The storageBackend is null, that really shouldn't be happening."
+            } else if (storageBackend.isClosed()) {
+                log.warn "Metalog: storage backend already closed, skipping report generation."
             } else {
-                // Generate the HTML report before closing the storage backend
                 log.info 'Metalog: generating HTML report.'
                 Report.generate(storageBackend, session.getWorkflowMetadata(), reportConfig)
                 storageBackend.close()
             }
-
         } catch (Exception e) {
             log.error("Error closing database connection: {}", e.message, e)
         }

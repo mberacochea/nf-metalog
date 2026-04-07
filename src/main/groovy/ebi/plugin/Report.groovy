@@ -83,7 +83,6 @@ class Report {
      * @return The loaded template as a string
      */
     private static String readAsset(String path) {
-        final writer = new StringWriter()
         // Ensure path starts with "/" for proper resource loading
         String resourcePath = path.startsWith("/") ? path : "/${path}"
         final res = Report.class.getResourceAsStream(resourcePath)
@@ -93,15 +92,9 @@ class Report {
         }
         
         try {
-            int ch
-            while ((ch = res.read()) != -1) {
-                writer.append(ch as char)
-            }
-            return writer.toString()
+            return new InputStreamReader(res, 'UTF-8').text
         } finally {
-            if (res != null) {
-                res.close()
-            }
+            res.close()
         }
     }
 

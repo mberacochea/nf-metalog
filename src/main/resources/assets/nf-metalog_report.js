@@ -43,10 +43,10 @@ function formatDuration(ms, type = 'display') {
     const minutes = Math.floor(seconds / 60);
     seconds %= 60;
 
-    if (days > 0) return `\${days}d \${hours}h`;
-    if (hours > 0) return `\${hours}h \${minutes}m`;
-    if (minutes > 0) return `\${minutes}m \${seconds}s`;
-    return `\${seconds}.\${Math.floor((ms % 1000) / 100)}s`;
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    if (minutes > 0) return `${minutes}m ${seconds}s`;
+    return `${seconds}.${Math.floor((ms % 1000) / 100)}s`;
 }
 
 /**
@@ -67,7 +67,7 @@ function formatDate(timestamp, type = 'display') {
 function getUniqueSamples(data) {
     if (!Array.isArray(data)) return [];
     const samples = [...new Set(data.map(t => t?.group_id).filter(Boolean))].sort();
-    console.log(`Found \${samples.length} unique samples from \${data.length} tasks`);
+    console.log(`Found ${samples.length} unique samples from ${data.length} tasks`);
     return samples;
 }
 
@@ -188,7 +188,7 @@ function updateTasksTable(sampleFilter = null) {
                 if (type !== 'display') return data;
                 const status = (data || '').toLowerCase();
                 const badgeMap = {completed: 'success', failed: 'danger', cached: 'warning'};
-                return `<span class="badge bg-\${badgeMap[status] || 'secondary'}">\${status}</span>`;
+                return `<span class="badge bg-${badgeMap[status] || 'secondary'}">${status}</span>`;
             }
         },
         {title: 'sample', data: 'group_id', className: 'id'},
@@ -203,7 +203,7 @@ function updateTasksTable(sampleFilter = null) {
             title: 'memory',
             data: 'memory',
             className: 'metrics',
-            render: (data, type) => formatMemory(data * 1024 * 1024, type)
+            render: (data, type) => data ? formatMemory(data * 1024 * 1024, type) : data
         },
         {title: 'peak_rss', data: 'peak_rss', className: 'metrics', render: formatMemory},
         {title: 'peak_vmem', data: 'peak_vmem', className: 'metrics', render: formatMemory},
@@ -219,11 +219,11 @@ function updateTasksTable(sampleFilter = null) {
             className: 'metrics',
             render: (data, type) => (type === 'display' && data) ? data.substring(0, 8) + '...' : data
         },
-        {title: 'container', data: 'container', className: 'metrics', render: d => `<samp>\${d}</samp>`},
+        {title: 'container', data: 'container', className: 'metrics', render: d => `<samp>${d}</samp>`},
         {title: 'disk', data: 'disk', className: 'metrics', render: d => d ?? "-"},
         {title: 'attempt', data: 'attempt', className: 'metrics'},
-        {title: 'scratch', data: 'scratch', className: 'metrics', render: d => `<samp>\${d}</samp>`},
-        {title: 'workdir', data: 'workdir', className: 'metrics', render: d => `<samp>\${d}</samp>`}
+        {title: 'scratch', data: 'scratch', className: 'metrics', render: d => `<samp>${d}</samp>`},
+        {title: 'workdir', data: 'workdir', className: 'metrics', render: d => `<samp>${d}</samp>`}
     ];
 
     tasksTable = $('#tasks-table').DataTable({
@@ -273,12 +273,13 @@ function createCharts(sample) {
             marker: {color},
             text: yValues.map(v => formatter(v)),
             textposition: 'outside',
+            cliponaxis: false,
             hoverinfo: 'x+text'
         }], {
             title: {text: title},
             xaxis: {tickangle: -45, automargin: true},
-            yaxis: {title: yTitle, ticktext: yValues.map(v => formatter(v)), tickvals: yValues},
-            margin: {t: 50, b: 100},
+            yaxis: {title: yTitle, ticktext: yValues.map(v => formatter(v)), tickvals: yValues, autorange: true},
+            margin: {t: 60, b: 100, pad: 10},
             plot_bgcolor: '#f8f9fa'
         }, {responsive: true, displaylogo: false});
     };
@@ -295,7 +296,7 @@ function createCharts(sample) {
 
 $(document).ready(() => {
     const data = window.nfMetalogData || [];
-    console.log(`nf-metalog report initialized with \${getUniqueSamples(data).length} samples and \${data.length} tasks`);
+    console.log(`nf-metalog report initialized with ${getUniqueSamples(data).length} samples and ${data.length} tasks`);
 
     initializeTables();
     updateOverviewStats();
