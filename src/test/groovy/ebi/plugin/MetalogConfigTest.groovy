@@ -26,7 +26,7 @@ class MetalogConfigTest extends Specification {
 
         expect:
         config.enabled == true
-        config.groupKey == "meta.id"
+        config.groupKey == "id"
         config.sqlite != null
         config.sqlite.file == "metalog.db"
         config.report != null
@@ -95,7 +95,7 @@ class MetalogConfigTest extends Specification {
 
         then:
         config.enabled == true  // default value
-        config.groupKey == "meta.id"  // default value
+        config.groupKey == "id"  // default value
         config.sqlite.file == "metalog.db"  // default value
         config.report.csvFile == "output.csv"
         config.report.htmlFile == "output.html"
@@ -140,7 +140,7 @@ class MetalogConfigTest extends Specification {
         def config = new MetalogConfig()
 
         expect:
-        config.storageBackend == "sqlite"
+        config.storageBackend == "memory"
     }
 
     def "test custom storage backend"() {
@@ -169,7 +169,7 @@ class MetalogConfigTest extends Specification {
         config.storageBackend == "invalid"  // Should accept any string value
     }
 
-    def "test default override value"() {
+    def "test default overwrite value"() {
         given:
         def config = new MetalogConfig()
 
@@ -177,11 +177,11 @@ class MetalogConfigTest extends Specification {
         config.report.overwrite == false
     }
 
-    def "test custom override value"() {
+    def "test custom overwrite value"() {
         given:
         def opts = [
             report: [
-                override: true
+                    overwrite: true
             ]
         ]
 
@@ -192,11 +192,11 @@ class MetalogConfigTest extends Specification {
         config.report.overwrite == true
     }
 
-    def "test override with explicit false"() {
+    def "test overwrite with explicit false"() {
         given:
         def opts = [
             report: [
-                override: false
+                    overwrite: false
             ]
         ]
 

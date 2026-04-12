@@ -37,13 +37,13 @@ class MetalogConfig implements ConfigScope {
 
     @ConfigOption
     @Description('''
-        The meta Map key to be used to group the data (meta.id by default)
+        The key within the meta Map used to group tasks by sample (default: 'id')
     ''')
     final String groupKey
 
     @ConfigOption
     @Description('''
-        Storage backend to use for metalog data. Options: 'sqlite' or 'memory'. Default: 'sqlite'
+        Storage backend to use for metalog data. Options: 'memory' or 'sqlite'. Default: 'memory'
     ''')
     final String storageBackend
 
@@ -62,17 +62,17 @@ class MetalogConfig implements ConfigScope {
     // no-arg constructor is required to enable validation of config options
     MetalogConfig() {
         this.enabled = true
-        this.groupKey = "meta.id"
-        this.storageBackend = "sqlite"
+        this.groupKey = "id"
+        this.storageBackend = "memory"
         this.sqlite = new SqliteConfig()
         this.report = new ReportConfig()
     }
 
     MetalogConfig(Map opts) {
         this.enabled = opts.enabled != null ? opts.enabled as Boolean : true
-        this.storageBackend = opts.storageBackend != null ? opts.storageBackend : "sqlite"
+        this.storageBackend = opts.storageBackend != null ? opts.storageBackend : "memory"
         this.sqlite = opts.sqlite ? new SqliteConfig(opts.sqlite as Map) : new SqliteConfig()
-        this.groupKey = opts.groupKey != null ? opts.groupKey : "meta.id"
+        this.groupKey = opts.groupKey != null ? opts.groupKey : "id"
         this.report = opts.report ? new ReportConfig(opts.report as Map) : new ReportConfig()
     }
 
@@ -117,7 +117,7 @@ class MetalogConfig implements ConfigScope {
 
         @ConfigOption
         @Description('''
-            Overwrite existing files if they already exist. Default: false
+            Overwrite existing report files if they already exist. Default: false
         ''')
         final Boolean overwrite
 
@@ -130,7 +130,7 @@ class MetalogConfig implements ConfigScope {
         ReportConfig(Map opts) {
             this.csvFile = opts?.csvFile as String ?: 'metalog.csv'
             this.htmlFile = opts?.htmlFile as String ?: 'metalog.html'
-            this.overwrite = opts?.override != null ? opts.override as boolean : false
+            this.overwrite = opts?.overwrite != null ? opts.overwrite as boolean : false
         }
     }
 }

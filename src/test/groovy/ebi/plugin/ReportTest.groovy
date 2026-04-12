@@ -1,43 +1,100 @@
 package ebi.plugin
 
+import ebi.plugin.storage.MemoryStorageBackend
+import nextflow.NextflowMeta
+import nextflow.processor.TaskId
+import nextflow.script.WorkflowMetadata
+import nextflow.trace.TraceRecord
+import nextflow.trace.WorkflowStats
 import spock.lang.Specification
+import spock.lang.TempDir
+
+import java.nio.file.Path
+import java.time.OffsetDateTime
 
 class ReportTest extends Specification {
 
-    def "test asset reading functionality"() {
-        when:
-        def jsAssets = []
-        def cssAssets = []
+    @TempDir
+    Path tempDir
 
-        // Test reading JavaScript assets
-        jsAssets.add(Report.readAsset("assets/nf-metalog_report.js"))
-        
-        // Test reading CSS assets  
-        cssAssets.add(Report.readAsset("assets/nf-metalog_report.css"))
+    def 'should write CSV file with sample data'() {
+        given:
+        def data = [
+                [run_name: 'test-run', group_id: 'sample1', process: 'FASTQC', status: 'COMPLETED', task_id: '1'],
+                [run_name: 'test-run', group_id: 'sample2', process: 'TRIM', status: 'COMPLETED', task_id: '2'],
+        ]
+        def csvFile = tempDir.resolve('report.csv').toString()
+
+        when:
+        Report.writeCsv(data, csvFile)
 
         then:
-        // Verify we can read the assets
-        jsAssets.size() == 1
-        cssAssets.size() == 1
-        
-        // Verify the content is not empty
-        jsAssets[0].size() > 0
-        cssAssets[0].size() > 0
-        
-        // Verify the content contains expected patterns
-        jsAssets[0].contains("nf-metalog")
-        cssAssets[0].contains("metalog")
+        def lines = tempDir.resolve('report.csv').readLines()
+        lines.size() == 3          // header + 2 data rows
+        lines[0].contains('run_name')
+        lines[0].contains('group_id')
+        lines[1].contains('sample1')
+        lines[2].contains('sample2')
     }
 
+    def 'should skip CSV write when data is empty'() {
+        given:
+        def csvFile = tempDir.resolve('empty.csv').toString()
 
-
-    def "test template reading"() {
         when:
-        def template = Report.readAsset("nf-metalog_report.html")
+        Report.writeCsv([], csvFile)
 
         then:
-        template != null
-        template.size() > 0
-        template.contains("nf-metalog report")
+        noExceptionThrown()
+        !tempDir.resolve('empty.csv').toFile().exists()
+    }
+
+    def 'should create parent directories for output paths'() {
+        given:
+        def nested = tempDir.resolve('sub/dir/report.html')
+
+        when:
+        Report.createParentDirs(nested)
+
+        then:
+        nested.parent.toFile().isDirectory()
+    }
+
+    def 'should generate HTML and CSV report files with sample data'() {
+        given:
+        def backend = new MemoryStorageBackend()
+        backend.initialize()
+
+        def trace = Mock(TraceRecord) {
+            get('task_id') >> 'task-1'
+            get('process') >> 'FASTQC'
+            get('status') >> 'COMPLETED'
+            get(_) >> 'value'
+            getSimpleName() >> 'FASTQC'
+            getTaskId() >> TaskId.of(1)
+        }
+        backend.insertOrUpdateTaskEvent('test-run', 'sample1', trace)
+
+        def workflow = Mock(WorkflowMetadata) {
+            getRunName() >> 'test-run'
+            getWorkDir() >> tempDir
+            getStart() >> OffsetDateTime.now()
+            getComplete() >> OffsetDateTime.now()
+            getStats() >> Mock(WorkflowStats)
+            getNextflow() >> Mock(NextflowMeta)
+        }
+        def config = new MetalogConfig.ReportConfig([
+                htmlFile: tempDir.resolve('report.html').toString(),
+                csvFile : tempDir.resolve('report.csv').toString(),
+        ])
+
+        when:
+        Report.generate(backend, workflow, config)
+
+        then:
+        tempDir.resolve('report.html').toFile().exists()
+        tempDir.resolve('report.csv').toFile().exists()
+        tempDir.resolve('report.html').text.contains('test-run')
+        tempDir.resolve('report.csv').text.contains('sample1')
     }
 }

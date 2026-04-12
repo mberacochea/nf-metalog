@@ -16,7 +16,6 @@
 
 package ebi.plugin
 
-import groovy.json.JsonOutput
 import groovy.util.logging.Slf4j
 import groovy.json.JsonBuilder
 import ebi.plugin.storage.StorageBackend
@@ -41,6 +40,10 @@ class Report {
             // Check if files already exist and handle override logic
             checkFileOverwrite(FileHelper.toPath(reportConfig.csvFile), reportConfig.overwrite)
             checkFileOverwrite(FileHelper.toPath(reportConfig.htmlFile), reportConfig.overwrite)
+
+            // Create parent directories if needed
+            createParentDirs(Paths.get(reportConfig.csvFile))
+            createParentDirs(Paths.get(reportConfig.htmlFile))
 
             // Use configuration parameters for file names
             writeCsv(csvData, reportConfig.csvFile)
@@ -130,6 +133,18 @@ class Report {
         } catch (Exception e) {
             log.error("Error writing CSV file: ${csvFile}", e)
             throw e
+        }
+    }
+
+    /**
+     * Create parent directories for the given path if they do not already exist.
+     * @param path
+     */
+    static void createParentDirs(Path path) {
+        final parent = path.parent
+        if (parent != null && !Files.exists(parent)) {
+            Files.createDirectories(parent)
+            log.debug("Created directories: ${parent}")
         }
     }
 

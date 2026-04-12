@@ -16,12 +16,13 @@
 
 package ebi.plugin.storage
 
+import java.nio.file.Files
 import java.nio.file.Path
-import java.sql.SQLException
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.PreparedStatement
 import java.sql.ResultSet
+import java.sql.SQLException
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -29,7 +30,6 @@ import java.util.concurrent.TimeUnit
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 
-import nextflow.processor.TaskHandler
 import nextflow.trace.TraceRecord
 
 /**
@@ -41,7 +41,8 @@ import nextflow.trace.TraceRecord
 @CompileStatic
 class SqliteStorageBackend implements StorageBackend {
 
-    class EventRecord {
+    @CompileStatic
+    static class EventRecord {
         String runName
         String groupId
         TraceRecord trace
@@ -66,11 +67,12 @@ class SqliteStorageBackend implements StorageBackend {
     private final BlockingQueue<EventRecord> eventQueue
     private final Thread workerThread
     private volatile boolean shutdown = false
+    private List<String> cachedAllColumns
+    private String cachedUpsertSQL
 
     SqliteStorageBackend(Path dbFile) {
         this.dbFile = dbFile
         this.eventQueue = new LinkedBlockingQueue<EventRecord>()
-        // TODO: maybe we should use a lock instead?
         this.workerThread = createWorkerThread()
     }
 
@@ -103,6 +105,12 @@ class SqliteStorageBackend implements StorageBackend {
     @Override
     void initialize() {
         try {
+            // Create parent directories if needed
+            if (dbFile.parent != null && !Files.exists(dbFile.parent)) {
+                Files.createDirectories(dbFile.parent)
+                log.debug("Created directories: ${dbFile.parent}")
+            }
+
             // Load SQLite JDBC driver
             Class.forName('org.sqlite.JDBC')
 
@@ -174,7 +182,24 @@ class SqliteStorageBackend implements StorageBackend {
             dbConnection.createStatement().withCloseable { stmt ->
                 stmt.execute(createTableSQL)
             }
-            log.info "SQLite table 'metalog' ready (WAL mode enabled, 30s busy timeout)"
+            log.info "SQLite table 'metalog' ready (WAL mode enabled, 10s busy timeout)"
+
+            // Cache column list and upsert SQL — TraceRecord.FIELDS is static so this never changes
+            def traceColumns = TraceRecord.FIELDS.keySet().collect { field ->
+                COLUMN_MAPPING.getOrDefault(field, field)
+            }
+            cachedAllColumns = ['run_name', 'group_id'] + traceColumns
+            def columnList = cachedAllColumns.join(', ')
+            def placeholders = (['?'] * cachedAllColumns.size()).join(', ')
+            def updateClauses = cachedAllColumns
+                    .findAll { it != 'task_id' }
+                    .collect { "${it} = excluded.${it}" }
+                    .join(', ')
+            cachedUpsertSQL = """
+                INSERT INTO metalog (${columnList})
+                VALUES (${placeholders})
+                ON CONFLICT(task_id) DO UPDATE SET ${updateClauses}
+            """.stripIndent()
 
             // Start the worker thread after DB is initialized
             workerThread.start()
@@ -210,38 +235,16 @@ class SqliteStorageBackend implements StorageBackend {
      * Processes a single task event from the queue and performs the upsert
      */
     private void processTaskEvent(EventRecord eventRecord) {
-
         String runName = eventRecord.runName
         String groupId = eventRecord.groupId
         TraceRecord traceRecord = eventRecord.trace
 
-        def columns = TraceRecord.FIELDS.keySet().collect { field ->
-            COLUMN_MAPPING.getOrDefault(field, field)
-        }
-        def values = TraceRecord.FIELDS.keySet().collect { field ->
+        def traceValues = TraceRecord.FIELDS.keySet().collect { field ->
             field == "process" ? traceRecord.getSimpleName() : traceRecord.get(field)?.toString()
         }
+        def allValues = [runName, groupId] + traceValues
 
-        // Prepend the metadata columns (run_name, group_id)
-        def allColumns = ['run_name', 'group_id'] + columns
-        def allValues = [runName, groupId] + values
-
-        def columnList = allColumns.join(', ')
-        def placeholders = (['?'] * allColumns.size()).join(', ')
-
-        // Build UPDATE SET clause (excluding primary key)
-        def updateClauses = allColumns
-                .findAll { it != 'task_id' }
-                .collect { "${it} = excluded.${it}" }
-                .join(', ')
-
-        final upsertSQL = """
-            INSERT INTO metalog (${columnList})
-            VALUES (${placeholders})
-            ON CONFLICT(task_id) DO UPDATE SET ${updateClauses}
-        """.stripIndent()
-
-        dbConnection.prepareStatement(upsertSQL).withCloseable { PreparedStatement stmt ->
+        dbConnection.prepareStatement(cachedUpsertSQL).withCloseable { PreparedStatement stmt ->
             // JDBC parameters are 1-indexed, not 0-indexed like arrays
             allValues.eachWithIndex { value, index ->
                 stmt.setObject(index + 1, value)
@@ -281,12 +284,10 @@ class SqliteStorageBackend implements StorageBackend {
     }
 
     /**
-     * Extracts all metadata from the JSON column into separate columns for CSV export.
-     * This provides a complete flattened view of all task metadata fields.
+     * Fetch all task records for a given run, returning each row as a column→value map.
      *
      * @param runName The Nextflow run name
-     * @return A list of maps where each map represents a row with all metadata extracted
-     *         into separate columns, ready for CSV writing or other data processing
+     * @return A list of maps, one per task row, ready for CSV or HTML report generation
      */
     List<Map<String, String>> fetchAllData(String runName) {
         List<Map<String, String>> result = []
@@ -295,11 +296,7 @@ class SqliteStorageBackend implements StorageBackend {
             throw new IllegalStateException("Database connection is not open")
         }
 
-        def columns = ['run_name', 'group_id'] + TraceRecord.FIELDS.keySet().collect { field ->
-            COLUMN_MAPPING.getOrDefault(field, field)
-        }
-
-        def columnList = columns.join(', ')
+        def columnList = cachedAllColumns.join(', ')
 
         final query = """
             SELECT ${columnList}
@@ -313,7 +310,7 @@ class SqliteStorageBackend implements StorageBackend {
                 stmt.executeQuery().withCloseable { ResultSet rs ->
                     while (rs.next()) {
                         Map<String, String> row = [:]
-                        columns.each { column ->
+                        cachedAllColumns.each { column ->
                             row[column] = rs.getString(column)
                         }
                         result.add(row)

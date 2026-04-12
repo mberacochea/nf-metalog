@@ -87,7 +87,7 @@ class MemoryStorageBackendTest extends Specification {
         results.every { it.run_name == "test-run" }
     }
 
-    def "test database close and reopen"() {
+    def "test data is cleared after close"() {
         given:
         def dbService = new MemoryStorageBackend()
         dbService.initialize()

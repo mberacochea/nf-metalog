@@ -1,7 +1,7 @@
 /**
  * nf-metalog Report Template
  *
- * **Heavily** inspired by Nextflow's reports but adapted for per-sample focus.
+ * Heavily inspired by Nextflow's reports but adapted for per-sample focus.
  * The code this is inspired from was licensed under Apache 2.0.
  * @license Apache 2.0
  */
@@ -66,9 +66,7 @@ function formatDate(timestamp, type = 'display') {
 
 function getUniqueSamples(data) {
     if (!Array.isArray(data)) return [];
-    const samples = [...new Set(data.map(t => t?.group_id).filter(Boolean))].sort();
-    console.log(`Found ${samples.length} unique samples from ${data.length} tasks`);
-    return samples;
+    return [...new Set(data.map(t => t?.group_id).filter(Boolean))].sort();
 }
 
 function countTasksByStatus(data, sample) {
@@ -240,54 +238,117 @@ function updateTasksTable(sampleFilter = null) {
 }
 
 /**
- * Create resource usage charts for selected sample
- * Generates Plotly bar charts for CPU, Memory, Duration, and Disk usage
+ * Normalize an array of byte values for Plotly's '.4s' SI tick format.
+ * Ported from the Nextflow execution report source (Apache 2.0).
+ * @param {number[]} list - Array of byte values
+ * @returns {number[]} - Normalized values suitable for SI-prefix display
+ */
+function norm_mem(list) {
+    if (list == null) return null;
+    return list.map(value => {
+        if (!value) return 0;
+        const x = Math.floor(Math.log10(value) / Math.log10(1024));
+        if (x === 0) return Math.round(value / 1.024);
+        let v = value;
+        for (let j = 0; j < x; j++) v = v / 1.024;
+        return Math.round(v);
+    });
+}
+
+const ALL_CHART_IDS = ['cpu-chart', 'mem-physical-chart', 'mem-virtual-chart', 'mem-pct-chart', 'duration-chart', 'io-read-chart', 'io-write-chart'];
+
+/**
+ * Create resource usage charts for selected sample.
+ * Immediately renders 4 default-visible charts; lazy-renders 3 secondary tab charts
+ * on first tab activation (matching the Nextflow execution report pattern).
  *
  * @function createCharts
  * @param {string} sample - Sample ID to create charts for
  */
 function createCharts(sample) {
-    const chartIds = ['cpu-chart', 'memory-chart', 'duration-chart', 'disk-chart'];
-    chartIds.forEach(id => document.getElementById(id).innerHTML = '<div class="chart-loading"></div>');
+    ALL_CHART_IDS.forEach(id => {
+        Plotly.purge(id);
+        document.getElementById(id).innerHTML = '';
+    });
 
-    if (!sample) return;
-
-    const data = window.nfMetalogData || [];
-    const sampleTasks = data.filter(task => task?.group_id === sample);
-
-    if (sampleTasks.length === 0) {
-        document.getElementById('cpu-chart').innerHTML = '<p class="text-muted">No task data available for this sample.</p>';
-        chartIds.slice(1).forEach(id => document.getElementById(id).innerHTML = '');
+    if (!sample) {
+        document.getElementById('charts-placeholder').classList.remove('d-none');
+        document.getElementById('charts-content').classList.add('d-none');
         return;
     }
 
-    const createChart = (id, key, title, yTitle, color, formatter) => {
-        const validTasks = sampleTasks.filter(t => t?.[key] != null && t[key] > 0);
-        if (validTasks.length === 0) return;
+    document.getElementById('charts-placeholder').classList.add('d-none');
+    document.getElementById('charts-content').classList.remove('d-none');
+    window._metalogCurrentSample = sample;
 
-        const yValues = validTasks.map(t => t[key]);
-        Plotly.newPlot(id, [{
-            x: validTasks.map(t => t.process),
-            y: yValues,
+    const data = window.nfMetalogData || [];
+    const tasks = data.filter(t => t?.group_id === sample);
+    if (tasks.length === 0) return;
+
+    const processes = tasks.map(t => t.process);
+
+    const plotBar = (id, yVals, title, yTitle, yFormat) => {
+        const traces = processes.map((proc, i) => ({
+            x: [proc],
+            y: [yVals[i]],
+            name: proc,
             type: 'bar',
-            marker: {color},
-            text: yValues.map(v => formatter(v)),
-            textposition: 'outside',
-            cliponaxis: false,
-            hoverinfo: 'x+text'
-        }], {
+        }));
+        Plotly.newPlot(id, traces, {
             title: {text: title},
             xaxis: {tickangle: -45, automargin: true},
-            yaxis: {title: yTitle, ticktext: yValues.map(v => formatter(v)), tickvals: yValues, autorange: true},
-            margin: {t: 60, b: 100, pad: 10},
-            plot_bgcolor: '#f8f9fa'
+            yaxis: {title: {text: yTitle}, tickformat: yFormat, rangemode: 'tozero'},
+            height: 650,
+            margin: {t: 60, b: 120, pad: 10},
+            plot_bgcolor: '#f8f9fa',
+            barmode: 'overlay',
+            showlegend: true,
         }, {responsive: true, displaylogo: false});
     };
 
-    createChart('cpu-chart', 'cpu_percent', 'CPU Usage (%)', 'CPU %', '#198754', v => v + '%');
-    createChart('memory-chart', 'memory', 'Peak Memory', 'Memory', '#0d6efd', v => formatMemory(v * 1024 * 1024));
-    createChart('duration-chart', 'duration', 'Duration', 'Time', '#ffc107', v => formatDuration(v));
-    createChart('disk-chart', 'read_bytes', 'Disk Read', 'Data', '#0dcaf0', v => formatMemory(v));
+    // --- Immediately rendered (default-visible tabs) ---
+
+    plotBar('cpu-chart',
+        tasks.map(t => t.cpu_percent ?? 0),
+        'CPU Usage', '% single core CPU usage', '.1f');
+
+    plotBar('mem-physical-chart',
+        norm_mem(tasks.map(t => t.peak_rss ?? 0)),
+        'Physical Memory Usage', 'Memory', '.4s');
+
+    plotBar('duration-chart',
+        tasks.map(t => t.duration ? (parseInt(t.duration) / 60000).toFixed(1) : 0),
+        'Task execution real-time', 'Execution time (minutes)', '.1f');
+
+    plotBar('io-read-chart',
+        norm_mem(tasks.map(t => t.read_bytes ?? 0)),
+        'Number of bytes read', 'Read bytes', '.4s');
+
+    // --- Lazy-rendered (secondary tabs) ---
+
+    $('#mem-virtual-tab').off('shown.bs.tab').on('shown.bs.tab', function () {
+        if ($('#mem-virtual-chart').is(':empty')) {
+            plotBar('mem-virtual-chart',
+                norm_mem(tasks.map(t => t.peak_vmem ?? 0)),
+                'Virtual Memory Usage', 'Memory', '.4s');
+        }
+    });
+
+    $('#mem-pct-tab').off('shown.bs.tab').on('shown.bs.tab', function () {
+        if ($('#mem-pct-chart').is(':empty')) {
+            plotBar('mem-pct-chart',
+                tasks.map(t => t.mem_percent ?? 0),
+                '% Requested Physical Memory Used', '% Memory', '.1f');
+        }
+    });
+
+    $('#io-write-tab').off('shown.bs.tab').on('shown.bs.tab', function () {
+        if ($('#io-write-chart').is(':empty')) {
+            plotBar('io-write-chart',
+                norm_mem(tasks.map(t => t.write_bytes ?? 0)),
+                'Number of bytes written', 'Written bytes', '.4s');
+        }
+    });
 }
 
 // ===============//

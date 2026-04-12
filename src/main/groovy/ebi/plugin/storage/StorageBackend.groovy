@@ -17,7 +17,6 @@
 package ebi.plugin.storage
 
 import groovy.transform.CompileStatic
-import nextflow.processor.TaskHandler
 import nextflow.trace.TraceRecord
 
 /**

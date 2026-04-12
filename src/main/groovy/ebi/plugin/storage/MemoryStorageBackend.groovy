@@ -21,9 +21,13 @@ import groovy.util.logging.Slf4j
 import nextflow.processor.TaskId
 import nextflow.trace.TraceRecord
 
+
 @Slf4j
 @CompileStatic
 class MemoryStorageBackend implements StorageBackend {
+
+    // % cannot be a column/key name in SQLite; apply the same mapping here for consistency
+    private static final Map<String, String> COLUMN_MAPPING = ['%cpu': 'cpu_percent', '%mem': 'mem_percent']
 
     private final Map<TaskId, Map<String, String>> taskEvents = new LinkedHashMap<>()
     private boolean closed = false
@@ -47,16 +51,17 @@ class MemoryStorageBackend implements StorageBackend {
 
         try {
             synchronized (taskEvents) {
-                // For memory storage, we'll just append new events
                 def event = new HashMap<String, String>()
-                // Extract basic information
-                event.put("run_name", runName) // This is not used because the data is not persisted
+                event.put("run_name", runName)
                 event.put("group_id", groupId)
                 event.put("process", trace.getSimpleName())
 
                 TraceRecord.FIELDS
                         .findAll { name, _ -> name != 'process' && trace?.get(name) != null }
-                        .each { name, _ -> event.put(name, trace.get(name).toString()) }
+                        .each { name, _ ->
+                            def colName = COLUMN_MAPPING.getOrDefault(name, name)
+                            event.put(colName, trace.get(name).toString())
+                        }
 
                 taskEvents[trace.taskId] = event
                 log.debug "Inserted task event to memory backend for groupId={}", groupId

@@ -26,7 +26,6 @@ class ResourceLoadingTest extends Specification {
         }
         
         then:
-        // Verify expected results
         results.each { result ->
             def expectedResult = testCases.find { it.path == result.path }
             if (expectedResult.shouldWork) {
@@ -36,17 +35,6 @@ class ResourceLoadingTest extends Specification {
                 assert result.success == false : "Expected ${result.path} to fail but it succeeded"
             }
         }
-        
-        // Print debug information
-        println "\n=== Resource Loading Test Results ==="
-        results.each { result ->
-            if (result.success) {
-                println "✓ ${result.path} - ${result.contentSize} characters"
-            } else {
-                println "✗ ${result.path} - ${result.error}"
-            }
-        }
-        println "==================================="
     }
 
     def "test all required assets are accessible"() {
@@ -72,18 +60,6 @@ class ResourceLoadingTest extends Specification {
         }
         
         then:
-        // All assets should load successfully
         loadedAssets.every { it.loaded } == true
-        
-        // Print debug information
-        println "\n=== Required Assets Status ==="
-        loadedAssets.each { asset ->
-            if (asset.loaded) {
-                println "✓ ${asset.path} - ${asset.size} characters"
-            } else {
-                println "✗ ${asset.path} - ${asset.error}"
-            }
-        }
-        println "==================================="
     }
 }

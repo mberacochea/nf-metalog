@@ -55,7 +55,7 @@
     </nav>
     
     <!-- Main Content Container -->
-    <main class="container-fluid mb-2" id="main-content">
+    <main class="container-xxl mb-2" id="main-content">
 
         <h1 class="display-3">nf-metalog report</h1>
         <h3 class="text-muted mb-4">[${workflow.runName}]</h3>
@@ -265,20 +265,95 @@
                     <h2 class="mb-0">Resource Analysis for <span id="current-sample" class="text-muted">[No sample selected]</span></h2>
                 </div>
                 <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div id="cpu-chart" class="chart-container"></div>
-                        </div>
-                        <div class="col-md-12">
-                            <div id="memory-chart" class="chart-container"></div>
-                        </div>
-                        <div class="col-md-12">
-                            <div id="duration-chart" class="chart-container"></div>
-                        </div>
-                        <div class="col-md-12">
-                            <div id="disk-chart" class="chart-container"></div>
-                        </div>
+
+                    <div id="charts-placeholder" class="text-center py-5 text-muted">
+                        <p class="lead mb-0">Select a sample from the table above to view its resource usage charts.</p>
                     </div>
+
+                    <div id="charts-content" class="d-none">
+
+                        <h4>CPU</h4>
+                        <ul class="nav nav-tabs mb-2" id="cpu-tabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="cpu-raw-tab" data-bs-toggle="tab"
+                                        data-bs-target="#cpu-raw-pane" type="button" role="tab">Raw Usage
+                                </button>
+                            </li>
+                        </ul>
+                        <div class="tab-content mb-4">
+                            <div class="tab-pane fade show active" id="cpu-raw-pane" role="tabpanel">
+                                <div id="cpu-chart"></div>
+                        </div>
+                        </div>
+
+                        <h4>Memory</h4>
+                        <ul class="nav nav-tabs mb-2" id="mem-tabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="mem-physical-tab" data-bs-toggle="tab"
+                                        data-bs-target="#mem-physical-pane" type="button" role="tab">Physical (RAM)
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="mem-virtual-tab" data-bs-toggle="tab"
+                                        data-bs-target="#mem-virtual-pane" type="button" role="tab">Virtual (RAM + Disk
+                                    swap)
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="mem-pct-tab" data-bs-toggle="tab"
+                                        data-bs-target="#mem-pct-pane" type="button" role="tab">% RAM Allocated
+                                </button>
+                            </li>
+                        </ul>
+                        <div class="tab-content mb-4">
+                            <div class="tab-pane fade show active" id="mem-physical-pane" role="tabpanel">
+                                <div id="mem-physical-chart"></div>
+                            </div>
+                            <div class="tab-pane fade" id="mem-virtual-pane" role="tabpanel">
+                                <div id="mem-virtual-chart"></div>
+                            </div>
+                            <div class="tab-pane fade" id="mem-pct-pane" role="tabpanel">
+                                <div id="mem-pct-chart"></div>
+                            </div>
+                        </div>
+
+                        <h4>Job Duration</h4>
+                        <ul class="nav nav-tabs mb-2" id="time-tabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="duration-raw-tab" data-bs-toggle="tab"
+                                        data-bs-target="#duration-raw-pane" type="button" role="tab">Raw Usage
+                                </button>
+                            </li>
+                        </ul>
+                        <div class="tab-content mb-4">
+                            <div class="tab-pane fade show active" id="duration-raw-pane" role="tabpanel">
+                                <div id="duration-chart"></div>
+                            </div>
+                        </div>
+
+                        <h4>I/O</h4>
+                        <ul class="nav nav-tabs mb-2" id="io-tabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="io-read-tab" data-bs-toggle="tab"
+                                        data-bs-target="#io-read-pane" type="button" role="tab">Read
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="io-write-tab" data-bs-toggle="tab"
+                                        data-bs-target="#io-write-pane" type="button" role="tab">Write
+                                </button>
+                            </li>
+                        </ul>
+                        <div class="tab-content mb-4">
+                            <div class="tab-pane fade show active" id="io-read-pane" role="tabpanel">
+                                <div id="io-read-chart"></div>
+                            </div>
+                            <div class="tab-pane fade" id="io-write-pane" role="tabpanel">
+                                <div id="io-write-chart"></div>
+                            </div>
+                        </div>
+
+                    </div> <!-- end charts-content -->
                 </div>
             </div>
         </section>

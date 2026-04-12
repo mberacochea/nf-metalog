@@ -42,23 +42,22 @@ class MetalogObserver implements TraceObserverV2 {
     MetalogObserver(Session session, MetalogConfig config) {
         this.session = session
         this.runName = session.runName
-
-        // For now, hardcode groupBy to 'id' (from meta.id)
         this.groupByKey = config.groupKey
         this.reportConfig = config.report
 
-        // Initialize database service based on configuration
+        // Initialize storage backend based on configuration
         final String storageBackend = config.storageBackend ?: 'sqlite'
-        
+
         if (storageBackend == 'memory') {
             this.storageBackend = new MemoryStorageBackend()
             log.info "Metalog observer initialized with memory backend: runName={}, groupBy={}", this.runName, this.groupByKey
         } else {
-            // Default to SQLite
+            // Default to SQLite — resolve relative paths against launchDir, keep absolute paths as-is
             final dbFileName = config.sqlite?.file ?: 'metalog.db'
-            final dbFile = (session.workDir as Path).resolve(dbFileName)
+            final dbPath = Path.of(dbFileName)
+            final dbFile = dbPath.isAbsolute() ? dbPath : Path.of(System.getProperty("user.dir")).resolve(dbFileName)
             this.storageBackend = new SqliteStorageBackend(dbFile)
-            log.info "Metalog observer initialized with SQLite backend: runName={}, groupBy={}, dbFile={}", this.runName, this.groupByKey, dbFileName
+            log.info "Metalog observer initialized with SQLite backend: runName={}, groupBy={}, dbFile={}", this.runName, this.groupByKey, dbFile
         }
 
         this.storageBackend.initialize()
@@ -99,7 +98,6 @@ class MetalogObserver implements TraceObserverV2 {
             // Extract grouping ID from inputs
             final String groupId = extractGroupId(event)
             if (groupId == null) {
-                // Skip this task, we can't find the grouping key (meta.id - is the default)
                 return
             }
 
