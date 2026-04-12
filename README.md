@@ -1,5 +1,7 @@
 # nf-metalog plugin
 
+**[mberacochea.github.io/nf-metalog](https://mberacochea.github.io/nf-metalog/)**
+
 The nf-metalog Nextflow plugin implements a custom observer. This plugin logs workflow task events using the meta Map to
 group tasks and their metadata, with support for in-memory and SQLite storage backends.
 It generates an HTML report, very similar to Nextflow's Trace Report, but with focus on "samples" taken from the meta
