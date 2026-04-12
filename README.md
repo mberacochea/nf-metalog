@@ -64,15 +64,15 @@ For more control over the plugin behaviour:
 ```groovy
 metalog {
     enabled = true
-   storageBackend = 'sqlite'  // 'memory' (default) or 'sqlite' for persistent storage
-   groupKey = 'id'            // Key within the meta Map used to group tasks by sample (default: 'id')
+    storageBackend = 'memory'  // 'memory' (default) or 'sqlite' for persistent storage
+    groupKey = 'id'            // Key within the meta Map used to group tasks by sample (default: 'id')
     sqlite {
-       file = 'custom_metalog.db'  // Custom database file name or full path (default: metalog.db)
+       file = 'metalog.db'      // Custom database file name or full path (default: metalog.db)
     }
     report {
-       csvFile = 'workflow_report.csv'   // Custom CSV output file
-       htmlFile = 'workflow_report.html' // Custom HTML output file
-       overwrite = false                 // Prevent overwriting existing files (default: false)
+       csvFile = 'metalog.csv'   // Custom CSV output file
+       htmlFile = 'metalog.html' // Custom HTML output file
+       overwrite = false        // Prevent overwriting existing files (default: false)
     }
 }
 ```
@@ -94,8 +94,8 @@ metalog {
 
 Storage Backend Options:
 
-- **`memory`**: (default) In-memory storage — fast, no files written, data is lost when the workflow completes
-- **`sqlite`**: Persistent storage using SQLite — data survives workflow completion and can be queried later
+- `memory`: (default) In-memory storage — fast, no files written, data is lost when the workflow completes
+- `sqlite`: Persistent storage using SQLite — data survives workflow completion and can be queried later
 
 Reports overwriting:
 
@@ -103,10 +103,9 @@ By default, the plugin will not overwrite existing files. To enable overwriting:
 
 ```groovy
 metalog {
-    enabled = true
     report {
        csvFile = 'metalog.csv'
-        htmlFile = 'metalog.html'
+       htmlFile = 'metalog.html'
        overwrite = true
     }
 }
