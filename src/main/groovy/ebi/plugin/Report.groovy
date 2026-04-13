@@ -62,7 +62,7 @@ class Report {
 
             def binding = [
                 workflow: workflow,
-                data: new JsonBuilder( csvData ).toPrettyString(),
+                data: new JsonBuilder( toColumnar(csvData) ).toString(),
                 js_assets: jsAssets,
                 css_assets: cssAssets
             ]
@@ -77,6 +77,43 @@ class Report {
         } catch (Exception e) {
             log.error("Error generating and writing the nf-metalog report", e)
         }
+    }
+
+    /**
+     * Convert a list of maps to a columnar format to reduce JSON payload size.
+     * Instead of repeating key names for every row, keys are stored once in 'cols'
+     * and each row becomes a plain value array in 'rows'.
+     *
+     * @param data List of maps with identical key sets
+     * @return Map with 'cols' (List<String>) and 'rows' (List<List<Object>>)
+     */
+    // Fields present in storage but excluded from the HTML report payload
+    private static final Set<String> REPORT_EXCLUDED_FIELDS = Collections.unmodifiableSet(new HashSet<>([
+        'script',       // task script body — can be very large
+        'env',          // environment variables — can be very large
+        'native_id',    // executor-specific job ID — not displayed
+        'module',       // Nextflow module system field — not displayed
+        'vol_ctxt',     // voluntary context switches — not displayed
+        'inv_ctxt',     // involuntary context switches — not displayed
+        'rss',          // memory snapshot — superseded by peak_rss
+        'vmem',         // memory snapshot — superseded by peak_vmem
+        'realtime',     // duplicate of duration
+        'queue',        // executor queue name — not displayed
+        'time',         // requested time limit — not displayed
+        'run_name',     // already in workflow metadata — redundant per row
+        'error_action', // not displayed
+        'cpu_model',    // not displayed
+        'hostname',     // not displayed
+        'cpus',         // not displayed
+    ]))
+
+    private static Map toColumnar(List<Map<String, Object>> data) {
+        if (!data) return [cols: [], rows: []]
+        // Assumes all rows share the same key set — safe for TraceRecord-derived data
+        // which has a static schema. All values are strings (stored via .toString()).
+        def cols = (data[0].keySet() as List<String>).findAll { !REPORT_EXCLUDED_FIELDS.contains(it) }
+        def rows = data.collect { row -> cols.collect { col -> row[col] } }
+        return [cols: cols, rows: rows]
     }
 
     /**

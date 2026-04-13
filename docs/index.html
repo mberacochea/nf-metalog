@@ -314,11 +314,12 @@
 
 <!-- ── Hero ── -->
 <section class="hero">
-  <h1>Track samples through<br><span>your Nextflow pipeline</span></h1>
+  <h1>Track samples through your Nextflow pipeline</h1>
   <p>
     nf-metalog groups task events by a metadata key (e.g. <code>meta.id</code>),
-    persists them to SQLite (optional) and generates interactive HTML reports
-    so you can follow every sample end-to-end.
+    generates interactive HTML reports so you can follow every sample end-to-end.
+    It uses the <a href="https://nf-co.re/docs/developing/components/meta-map" target="_blank">'meta-map' convention that nf-core</a> uses to carry sample metadata in
+    Nextflow pipeline.
   </p>
   <div class="cta-group">
     <a class="btn btn-primary" href="example.html">
@@ -332,6 +333,27 @@
       View on GitHub
     </a>
   </div>
+</section>
+
+<!-- ── Pipeline example ── -->
+<section class="config-section">
+  <p class="sub">
+    If your pipeline processes already pass a <code>meta</code> map as the first tuple element, no pipeline changes are needed.
+  </p>
+  <pre><code><span class="cm">// Each sample is a tuple of (meta map, data)</span>
+<span class="kw">workflow</span> {
+    ch_input = Channel.of(
+        [[<span class="key">id</span>: <span class="str">'sample1'</span>, <span class="key">condition</span>: <span class="str">'control'</span>], file(<span class="str">'reads_1.fastq.gz'</span>)],
+        [[<span class="key">id</span>: <span class="str">'sample2'</span>, <span class="key">condition</span>: <span class="str">'treated'</span>], file(<span class="str">'reads_2.fastq.gz'</span>)]
+    )
+    ALIGN( ch_input )
+}
+
+<span class="kw">process</span> ALIGN {
+    <span class="key">input</span>:  tuple val(meta), path(reads)
+    <span class="key">output</span>: tuple val(meta), path(<span class="str">'*.bam'</span>)
+    <span class="cm">// nf-metalog picks up meta.id and groups all tasks for that sample</span>
+}</code></pre>
 </section>
 
 <!-- ── Report Preview ── -->
@@ -351,13 +373,11 @@
   <h2>Quick start</h2>
   <p class="sub">Add this to your <code>nextflow.config</code> and you're done.</p>
   <pre><code><span class="kw">plugins</span> {
-    <span class="key">id</span> <span class="str">"nf-metalog@0.1.0"</span>
+    <span class="key">id</span> <span class="str">"nf-metalog@0.2.0"</span>
 }
 
 <span class="kw">metalog</span> {
-    <span class="key">enabled</span>        = <span class="val">true</span>
-    <span class="key">groupKey</span>       = <span class="str">'id'</span>          <span class="cm">// key in your meta map</span>
-    <span class="key">storageBackend</span> = <span class="str">'sqlite'</span>     <span class="cm">// or 'memory'</span>
+    <span class="key">groupKey</span>     = <span class="str">'id'</span> <span class="cm">// key in the meta map</span>
     <span class="kw">report</span> {
         <span class="key">csvFile</span>  = <span class="str">'metalog.csv'</span>
         <span class="key">htmlFile</span> = <span class="str">'metalog.html'</span>

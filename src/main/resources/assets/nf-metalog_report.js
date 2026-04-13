@@ -11,6 +11,16 @@ let samplesTable = null;
 let tasksTable = null;
 
 /**
+ * Expand columnar data {cols, rows} back to an array of objects.
+ * @param {{cols: string[], rows: any[][]}} columnar
+ * @returns {Object[]}
+ */
+function expandColumnar({ cols = [], rows = [] } = {}) {
+    if (!Array.isArray(cols) || !Array.isArray(rows)) return [];
+    return rows.map(row => Object.fromEntries(cols.map((col, i) => [col, Array.isArray(row) ? row[i] : undefined])));
+}
+
+/**
  * Format memory values in human-readable units
  * @param {number} bytes - Memory value in bytes
  * @param {string} type - Type of formatting ('display' or 'sort')
@@ -356,6 +366,9 @@ function createCharts(sample) {
 // ===============//
 
 $(document).ready(() => {
+    if (window.nfMetalogData?.cols) {
+        window.nfMetalogData = expandColumnar(window.nfMetalogData);
+    }
     const data = window.nfMetalogData || [];
     console.log(`nf-metalog report initialized with ${getUniqueSamples(data).length} samples and ${data.length} tasks`);
 

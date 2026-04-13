@@ -98,6 +98,7 @@ class MetalogObserver implements TraceObserverV2 {
             // Extract grouping ID from inputs
             final String groupId = extractGroupId(event)
             if (groupId == null) {
+                log.warn("Could not extract group ID for task {}, skipping", event?.handler?.task?.name ?: "unknown")
                 return
             }
 
